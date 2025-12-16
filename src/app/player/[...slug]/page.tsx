@@ -44,7 +44,9 @@ export default function PlayerPage() {
 
   const folderPath = slug.join('/');
   const runningOrderPath = `${folderPath}/running-order.json`;
-  const commentsPath = `${folderPath}/comments.json`;
+
+  // Derived state for current comment path
+  const commentsPath = currentTrack ? `${folderPath}/${currentTrack.name}.comments.json` : null;
 
   const autoplayRef = useRef(isAutoplay);
   autoplayRef.current = isAutoplay;
@@ -52,8 +54,6 @@ export default function PlayerPage() {
   playlistRef.current = playlist;
   const currentTrackRef = useRef(currentTrack);
   currentTrackRef.current = currentTrack;
-  const commentsRef = useRef(comments);
-  commentsRef.current = comments;
 
   useEffect(() => {
     setIsClient(true);
@@ -105,7 +105,7 @@ export default function PlayerPage() {
     }
   }, [wavesurfer]);
 
-  // Data fetching
+  // Initial Playlist Fetching
   useEffect(() => {
     Promise.all([
       fetch(`/api/files?path=${folderPath}`).then(res => res.json()) as Promise<{ files: FileItem[] }>,
@@ -127,15 +127,28 @@ export default function PlayerPage() {
         setCurrentTrack(playlist[0]);
       }
     });
+  }, [folderPath, runningOrderPath]);
+
+  // Track-specific Comments Fetching
+  useEffect(() => {
+    if (!commentsPath) {
+      setComments([]);
+      return;
+    }
+
+    // Reset comments while loading new track to avoid showing stale data
+    setComments([]);
 
     fetch(`/api/comments?path=${commentsPath}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.comments) {
           setComments(data.comments);
+        } else {
+          setComments([]);
         }
       });
-  }, [folderPath, commentsPath, runningOrderPath]);
+  }, [commentsPath]);
 
   const onDragEnd: OnDragEndResponder = (result) => {
     if (!result.destination) return;
@@ -155,7 +168,7 @@ export default function PlayerPage() {
   };
 
   const handleAddComment = () => {
-    if (newComment.trim() && newCommentInitials.trim() && newCommentTimestamp !== null) {
+    if (newComment.trim() && newCommentInitials.trim() && newCommentTimestamp !== null && commentsPath) {
       const newCommentData = { timestamp: newCommentTimestamp, text: newComment, initials: newCommentInitials };
       const newComments: Comment[] = [...comments, newCommentData];
       setComments(newComments);
