@@ -1,44 +1,26 @@
-// src/app/api/files/route.ts
 import { NextResponse } from 'next/server';
+import { storage } from '@/lib/storage';
+import { ROOT_DIR } from '@/lib/config';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const path = searchParams.get('path') || '';
+  const rawPath = searchParams.get('path') || '';
+  const path = `${ROOT_DIR}${rawPath}`;
 
-  const mockData = {
-    '': [
-      { name: 'audio-folder-1', type: 'directory' },
-      { name: 'audio-folder-2', type: 'directory' },
-    ],
-    'audio-folder-1': [
-      { name: 'track_1.mp3', type: 'file' },
-      { name: 'track_2.mp3', type: 'file' },
-      { name: 'track_3.mp3', type: 'file' },
-      { name: 'track_4.mp3', type: 'file' },
-      { name: 'track_5.mp3', type: 'file' },
-      { name: 'running-order.json', type: 'file' },
-      { name: 'comments.json', type: 'file' },
-    ],
-    'audio-folder-2': [
-      { name: 'track_1.mp3', type: 'file' },
-      { name: 'track_2.mp3', type: 'file' },
-      { name: 'track_3.mp3', type: 'file' },
-      { name: 'track_4.mp3', type: 'file' },
-      { name: 'track_5.mp3', type: 'file' },
-      { name: 'running-order.json', type: 'file' },
-      { name: 'comments.json', type: 'file' },
-    ],
-  };
+  try {
+    const files = await storage.listFiles(path);
 
-  let files = mockData[path] || [];
+    // Sort directories first, then files
+    const sortedFiles = files.sort((a, b) => {
+      if (a.type === b.type) {
+        return a.name.localeCompare(b.name);
+      }
+      return a.type === 'directory' ? -1 : 1;
+    });
 
-  if (path) {
-    // For a specific path, filter for audio files only
-    files = files.filter(file => file.type === 'file' && file.name.match(/\.(mp3|wav|ogg)$/));
-  } else {
-    // For the root, filter for directories only
-    files = files.filter(file => file.type === 'directory');
+    return NextResponse.json({ files: sortedFiles });
+  } catch (error) {
+    console.error("Error listing files:", error);
+    return new Response('Error listing files', { status: 500 });
   }
-
-  return NextResponse.json({ files });
 }

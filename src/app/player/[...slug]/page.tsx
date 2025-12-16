@@ -4,12 +4,13 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { DragDropContext, Droppable, Draggable, OnDragEndResponder } from '@hello-pangea/dnd';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useWavesurfer } from '@wavesurfer/react';
 import WaveSurfer from 'wavesurfer.js';
 
 interface FileItem {
   name: string;
+  type: 'file' | 'directory';
 }
 
 interface Comment {
@@ -31,6 +32,8 @@ export default function PlayerPage() {
   const params = useParams();
   const slug = params.slug as string[];
   const [playlist, setPlaylist] = useState<FileItem[]>([]);
+  const [directories, setDirectories] = useState<FileItem[]>([]);
+  const [isFolderView, setIsFolderView] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<FileItem | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
@@ -40,6 +43,7 @@ export default function PlayerPage() {
   const [isClient, setIsClient] = useState(false);
   const [hoveredCommentTimestamp, setHoveredCommentTimestamp] = useState<number | null>(null);
   const [duration, setDuration] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const folderPath = slug.join('/');
@@ -111,21 +115,35 @@ export default function PlayerPage() {
       fetch(`/api/files?path=${folderPath}`).then(res => res.json()) as Promise<{ files: FileItem[] }>,
       fetch(`/api/running-order?path=${runningOrderPath}`).then(res => res.ok ? res.json() : null) as Promise<{ playlist: string[] } | null>
     ]).then(([filesData, orderData]) => {
-      const files = filesData.files;
-      let playlist = files;
+      const allFiles = filesData.files || [];
 
-      if (orderData && orderData.playlist) {
-        const orderedNames = orderData.playlist;
-        const fileMap = new Map(files.map((f: FileItem) => [f.name, f]));
-        const orderedPlaylist = orderedNames.map((name: string) => fileMap.get(name)).filter((item): item is FileItem => !!item);
-        const newFiles = files.filter((f: FileItem) => !orderedNames.includes(f.name));
-        playlist = [...orderedPlaylist, ...newFiles];
-      }
+      // Filter for audio files
+      const audioFiles = allFiles.filter(f => f.type === 'file' && f.name.match(/\.(mp3|wav|ogg)$/i));
+      const subDirectories = allFiles.filter(f => f.type === 'directory');
 
-      setPlaylist(playlist);
-      if (playlist.length > 0) {
-        setCurrentTrack(playlist[0]);
+      if (audioFiles.length > 0) {
+        // Player Mode
+        setIsFolderView(false);
+        let playlist = audioFiles;
+
+        if (orderData && orderData.playlist) {
+          const orderedNames = orderData.playlist;
+          const fileMap = new Map(audioFiles.map((f: FileItem) => [f.name, f]));
+          const orderedPlaylist = orderedNames.map((name: string) => fileMap.get(name)).filter((item): item is FileItem => !!item);
+          const newFiles = audioFiles.filter((f: FileItem) => !orderedNames.includes(f.name));
+          playlist = [...orderedPlaylist, ...newFiles];
+        }
+
+        setPlaylist(playlist);
+        if (playlist.length > 0) {
+          setCurrentTrack(playlist[0]);
+        }
+      } else {
+        // Folder View Mode
+        setIsFolderView(true);
+        setDirectories(subDirectories);
       }
+      setIsLoading(false);
     });
   }, [folderPath, runningOrderPath]);
 
@@ -212,16 +230,53 @@ export default function PlayerPage() {
 
     setNewCommentTimestamp(time);
 
-    // We don't necessarily want to seek the audio when adding a comment, 
+    // We don't necessarily want to seek the audio when adding a comment,
     // but standard behavior is usually click-to-seek.
     // Let's allow seek for now as it's the default container behavior unless we stop propagation.
   };
 
+  if (!isClient || isLoading) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center p-24">
+        <div className="text-xl font-bold text-gray-400">Loading...</div>
+      </main>
+    )
+  }
+
+  // Render Directory View or Player View
+  if (isFolderView) {
+    return (
+      <main className="flex min-h-screen flex-col items-center p-24">
+        <div className="z-10 w-full max-w-5xl">
+          <div className="mb-4">
+            <Link href={folderPath.includes('/') ? `/player/${folderPath.split('/').slice(0, -1).join('/')}` : '/'} className="text-blue-500 mb-8 block">&larr; Back</Link>
+            <h1 className="text-3xl font-bold mb-8 capitalize">{folderPath.split('/').pop()?.replace(/-/g, ' ')}</h1>
+          </div>
+
+          <h2 className="text-2xl font-bold mb-4">Directories</h2>
+          {directories.length === 0 ? (
+            <p>No subdirectories or audio files found.</p>
+          ) : (
+            <ul>
+              {directories.map((dir) => (
+                <li key={dir.name} className="mb-2">
+                  <Link href={`/player/${folderPath}/${dir.name}`} className="text-blue-500 text-xl hover:text-blue-700 underline">
+                    {dir.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="flex min-h-screen flex-col items-center p-24">
       <div className="z-10 w-full max-w-5xl">
-        <Link href="/" className="text-blue-500 mb-8 block">&larr; Back to Directories</Link>
-        <h1 className="text-3xl font-bold mb-4 capitalize">{folderPath.replace(/-/g, ' ')}</h1>
+        <Link href={folderPath.includes('/') ? `/player/${folderPath.split('/').slice(0, -1).join('/')}` : '/'} className="text-blue-500 mb-8 block">&larr; Back to Directories</Link>
+        <h1 className="text-3xl font-bold mb-4 capitalize">{folderPath.split('/').pop()?.replace(/-/g, ' ')}</h1>
 
         <div className="mb-8 p-4 border rounded-lg bg-white shadow-sm">
           <h2 className="text-2xl font-bold mb-4">Player</h2>
