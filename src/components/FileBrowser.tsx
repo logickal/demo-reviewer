@@ -15,7 +15,7 @@ const FileBrowser = () => {
   useEffect(() => {
     fetch(`/api/files`)
       .then((res) => res.json())
-      .then((data) => {
+      .then((data: { files: FileItem[] }) => {
         setDirectories(data.files.filter((item) => item.type === 'directory'));
       });
   }, []);
