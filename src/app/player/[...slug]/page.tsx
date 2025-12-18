@@ -367,7 +367,7 @@ export default function PlayerPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
           <div className="lg:col-span-2">
-            <h2 className="text-xl font-black mb-6 text-gray-900 flex items-center gap-2"><span className="w-1.5 h-6 bg-orange-500 rounded-full"></span>Transcript</h2>
+            <h2 className="text-xl font-black mb-6 text-gray-900 flex items-center gap-2"><span className="w-1.5 h-6 bg-orange-500 rounded-full"></span>Comments</h2>
             <div className="space-y-3">
               {comments.slice().sort((a, b) => a.timestamp - b.timestamp).map((comment, index) => (
                 <div key={index} className={`group p-4 rounded-2xl border transition-all flex gap-4 items-start cursor-pointer ${hoveredCommentTimestamp === comment.timestamp ? 'bg-orange-50 border-orange-200 shadow-md' : 'bg-white border-gray-100 hover:border-gray-200'}`} onMouseEnter={() => setHoveredCommentTimestamp(comment.timestamp)} onMouseLeave={() => setHoveredCommentTimestamp(null)}>
@@ -383,7 +383,7 @@ export default function PlayerPage() {
           </div>
 
           <div>
-            <h2 className="text-xl font-black mb-6 text-gray-900 flex items-center gap-2"><span className="w-1.5 h-6 bg-blue-500 rounded-full"></span>Liner Notes</h2>
+            <h2 className="text-xl font-black mb-6 text-gray-900 flex items-center gap-2"><span className="w-1.5 h-6 bg-blue-500 rounded-full"></span>Running Order</h2>
             <DragDropContext onDragEnd={onDragEnd}>
               <Droppable droppableId="playlist">
                 {(provided) => (
