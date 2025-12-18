@@ -16,7 +16,7 @@ const FileBrowser = () => {
     fetch(`/api/files`)
       .then((res) => res.json())
       .then((data) => {
-        setDirectories(data.files.filter((item) => item.type === 'directory'));
+        setDirectories(data.files.filter((item: FileItem) => item.type === 'directory'));
       });
   }, []);
 
