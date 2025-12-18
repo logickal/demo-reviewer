@@ -21,17 +21,7 @@ export class GoogleCloudStorageProvider implements StorageProvider {
 
     constructor() {
         const credentialsJson = process.env.GCS_CREDENTIALS_JSON;
-        console.log('StorageProvider: Environment check...');
         const envKeys = Object.keys(process.env).filter(key => key.startsWith('GCS_') || key.startsWith('NEXT_'));
-        console.log('Visible Env Vars:', envKeys);
-        console.log('GCS_CREDENTIALS_JSON value type:', typeof credentialsJson);
-        if (credentialsJson) {
-            console.log('GCS_CREDENTIALS_JSON length:', credentialsJson.length);
-            console.log('GCS_CREDENTIALS_JSON start:', credentialsJson.substring(0, 20) + '...');
-        } else {
-            console.log('GCS_CREDENTIALS_JSON is undefined/empty');
-        }
-
         const options: any = {};
 
         if (credentialsJson) {
