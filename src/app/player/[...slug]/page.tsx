@@ -269,7 +269,12 @@ export default function PlayerPage() {
         }
       };
 
-      const onReady = () => setDuration(wavesurfer.getDuration());
+      const onReady = () => {
+        setDuration(wavesurfer.getDuration());
+        if (autoplayRef.current) {
+          wavesurfer.play();
+        }
+      };
       wavesurfer.on('finish', onEnd);
       wavesurfer.on('ready', onReady);
       wavesurfer.on('decode', onReady);
@@ -385,10 +390,15 @@ export default function PlayerPage() {
 
   const onPlayPause = () => wavesurfer && wavesurfer.playPause();
 
-  const toggleAutoplay = () => {
-    setIsAutoplay(!isAutoplay);
-    if (!isAutoplay && !isPlaying && playlist.length > 0) {
-      setCurrentTrack(currentTrack || playlist[0]);
+  const handlePlayFullSequence = () => {
+    if (playlist.length > 0) {
+      setIsAutoplay(true);
+      if (currentTrack?.name === playlist[0].name) {
+        wavesurfer?.setTime(0);
+        wavesurfer?.play();
+      } else {
+        setCurrentTrack(playlist[0]);
+      }
     }
   };
 
@@ -577,7 +587,15 @@ export default function PlayerPage() {
                 <span className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1 bg-gray-100 w-fit px-2 py-0.5 rounded leading-none flex items-center gap-1.5"><span className="text-orange-500 inline-block w-1 h-1 rounded-full bg-orange-500"></span>{formatTime(currentTime)} / {formatTime(duration)}</span>
               </div>
             </div>
-            <button onClick={toggleAutoplay} className={`px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border ${isAutoplay ? 'bg-green-500 border-green-500 text-white shadow-lg shadow-green-100' : 'bg-white border-gray-200 text-gray-400 hover:border-orange-200 hover:text-orange-500'}`}>{isAutoplay ? 'Loop On' : 'Loop Off'}</button>
+            <button
+              onClick={handlePlayFullSequence}
+              className={`px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${isAutoplay ? 'bg-green-500 border-green-500 text-white shadow-lg shadow-green-100' : 'bg-white border-gray-200 text-gray-400 hover:border-orange-200 hover:text-orange-500'}`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+              {isAutoplay ? 'Running Order Playing' : 'Play full running order'}
+            </button>
           </div>
         </div>
 
