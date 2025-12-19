@@ -402,6 +402,24 @@ export default function PlayerPage() {
     }
   };
 
+  const handleSkipForward = () => {
+    const currentIndex = playlist.findIndex(t => t.name === currentTrack?.name);
+    if (currentIndex !== -1 && currentIndex < playlist.length - 1) {
+      setCurrentTrack(playlist[currentIndex + 1]);
+    }
+  };
+
+  const handleSkipBackward = () => {
+    if (wavesurfer && wavesurfer.getCurrentTime() > 2) {
+      wavesurfer.setTime(0);
+      return;
+    }
+    const currentIndex = playlist.findIndex(t => t.name === currentTrack?.name);
+    if (currentIndex > 0) {
+      setCurrentTrack(playlist[currentIndex - 1]);
+    }
+  };
+
   const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current || !wavesurfer) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -588,17 +606,39 @@ export default function PlayerPage() {
 
           <div className="flex items-center justify-between gap-6">
             <div className="flex items-center gap-6">
-              <button onClick={onPlayPause} className="w-16 h-16 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-orange-200 transition-all active:scale-90">
-                {isPlaying ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8">
-                    <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 0 1 .75-.75H9a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H7.5a.75.75 0 0 1-.75-.75V5.25Zm7.5 0A.75.75 0 0 1 15 4.5h1.5a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75V5.25Z" clipRule="evenodd" />
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleSkipBackward}
+                  className="w-10 h-10 bg-white border border-gray-100 text-gray-400 hover:text-orange-500 hover:border-orange-200 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-sm"
+                  title="Previous Track"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                    <path d="M9.195 18.44c1.25.713 2.805-.19 2.805-1.629v-2.34l6.945 3.968c1.25.714 2.805-.19 2.805-1.629V5.19c0-1.44-1.555-2.343-2.805-1.628L12 7.529v-2.34c0-1.44-1.555-2.343-2.805-1.628l-7.108 4.061c-1.26.72-1.26 2.536 0 3.256l7.108 4.061c.001 0 .001 0 0 0Z" />
                   </svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 ml-1">
-                    <path fillRule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clipRule="evenodd" />
+                </button>
+
+                <button onClick={onPlayPause} className="w-16 h-16 bg-orange-500 hover:bg-orange-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-orange-200 transition-all active:scale-90">
+                  {isPlaying ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8">
+                      <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 0 1 .75-.75H9a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H7.5a.75.75 0 0 1-.75-.75V5.25Zm7.5 0A.75.75 0 0 1 15 4.5h1.5a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75V5.25Z" clipRule="evenodd" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 ml-1">
+                      <path fillRule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+
+                <button
+                  onClick={handleSkipForward}
+                  className="w-10 h-10 bg-white border border-gray-100 text-gray-400 hover:text-orange-500 hover:border-orange-200 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-sm"
+                  title="Next Track"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                    <path d="M5.055 7.06c-1.25-.714-2.805.189-2.805 1.628v8.123c0 1.44 1.555 2.342 2.805 1.628L12 14.471v2.34c0 1.44 1.555 2.342 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256L14.805 7.06C13.555 6.346 12 7.25 12 8.688v2.34L5.055 7.06Z" />
                   </svg>
-                )}
-              </button>
+                </button>
+              </div>
               <div className="flex flex-col">
                 <span className="text-xl font-black text-gray-900 tracking-tight leading-tight">{currentTrack?.name || 'No Track Selected'}</span>
                 <span className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1 bg-gray-100 w-fit px-2 py-0.5 rounded leading-none flex items-center gap-1.5"><span className="text-orange-500 inline-block w-1 h-1 rounded-full bg-orange-500"></span>{formatTime(currentTime)} / {formatTime(duration)}</span>
