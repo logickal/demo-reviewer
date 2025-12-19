@@ -408,7 +408,13 @@ export default function PlayerPage() {
     const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
     const time = ratio * wavesurfer.getDuration();
     if ((e.target as HTMLElement).closest('.comment-marker')) return;
-    setNewCommentTimestamp(time);
+
+    if (e.metaKey || e.ctrlKey) {
+      setNewCommentTimestamp(time);
+    } else {
+      setNewCommentTimestamp(null);
+      wavesurfer.setTime(time);
+    }
   };
 
   const handleDeleteComment = (id: string) => {
@@ -533,7 +539,10 @@ export default function PlayerPage() {
 
         <div className="mb-8 p-6 border-0 rounded-3xl bg-white shadow-xl shadow-gray-200/50">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-sm font-black uppercase tracking-widest text-orange-500">Currently Playing</h2>
+            <div className="flex items-center gap-4">
+              <h2 className="text-sm font-black uppercase tracking-widest text-orange-500">Currently Playing</h2>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 px-2 py-1 rounded-md border border-gray-100 italic">Click to seek • Cmd/Ctrl + Click to comment</span>
+            </div>
             <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${isAutoplay ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>Autoplay {isAutoplay ? 'ON' : 'OFF'}</div>
           </div>
 
