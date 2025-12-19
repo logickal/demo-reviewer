@@ -272,7 +272,20 @@ export default function PlayerPage() {
       const onReady = () => {
         setDuration(wavesurfer.getDuration());
         if (autoplayRef.current) {
+          // Fade in
+          wavesurfer.setVolume(0);
           wavesurfer.play();
+          const fadeDuration = 0.05;
+          const startTime = Date.now();
+
+          const interval = setInterval(() => {
+            const elapsed = (Date.now() - startTime) / 1000;
+            const ratio = Math.min(1, elapsed / fadeDuration);
+            wavesurfer.setVolume(ratio);
+            if (ratio === 1) {
+              clearInterval(interval);
+            }
+          }, 5);
         }
       };
       wavesurfer.on('finish', onEnd);
@@ -388,14 +401,53 @@ export default function PlayerPage() {
     }
   };
 
-  const onPlayPause = () => wavesurfer && wavesurfer.playPause();
+  const onPlayPause = async () => {
+    if (!wavesurfer) return;
+
+    if (isPlaying) {
+      // Fade out
+      const fadeDuration = 0.05; // 50ms
+      const startVolume = wavesurfer.getVolume();
+      const startTime = Date.now();
+
+      await new Promise<void>(resolve => {
+        const interval = setInterval(() => {
+          const elapsed = (Date.now() - startTime) / 1000;
+          const ratio = Math.max(0, 1 - elapsed / fadeDuration);
+          wavesurfer.setVolume(startVolume * ratio);
+          if (ratio === 0) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 5);
+      });
+
+      wavesurfer.pause();
+      wavesurfer.setVolume(startVolume);
+    } else {
+      // Fade in
+      wavesurfer.setVolume(0);
+      wavesurfer.play();
+      const fadeDuration = 0.05;
+      const startTime = Date.now();
+
+      const interval = setInterval(() => {
+        const elapsed = (Date.now() - startTime) / 1000;
+        const ratio = Math.min(1, elapsed / fadeDuration);
+        wavesurfer.setVolume(ratio);
+        if (ratio === 1) {
+          clearInterval(interval);
+        }
+      }, 5);
+    }
+  };
 
   const handlePlayFullSequence = () => {
     if (playlist.length > 0) {
       setIsAutoplay(true);
       if (currentTrack?.name === playlist[0].name) {
         wavesurfer?.setTime(0);
-        wavesurfer?.play();
+        onPlayPause(); // Use the de-clicked play/pause
       } else {
         setCurrentTrack(playlist[0]);
       }
