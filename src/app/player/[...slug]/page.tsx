@@ -220,6 +220,7 @@ export default function PlayerPage() {
   const [replyText, setReplyText] = useState('');
   const [replyInitials, setReplyInitials] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [trackDurations, setTrackDurations] = useState<Record<string, number>>({});
 
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
@@ -238,6 +239,8 @@ export default function PlayerPage() {
   playlistRef.current = playlist;
   const currentTrackRef = useRef(currentTrack);
   currentTrackRef.current = currentTrack;
+  const trackDurationsRef = useRef(trackDurations);
+  trackDurationsRef.current = trackDurations;
 
   const isGuest = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -270,7 +273,27 @@ export default function PlayerPage() {
       };
 
       const onReady = () => {
-        setDuration(wavesurfer.getDuration());
+        const d = wavesurfer.getDuration();
+        setDuration(d);
+
+        if (currentTrackRef.current && !trackDurationsRef.current[currentTrackRef.current.name]) {
+          setTrackDurations(prev => {
+            const next = { ...prev, [currentTrackRef.current!.name]: d };
+
+            // Save to JSON
+            fetch(`/api/running-order?path=${runningOrderPath}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                playlist: playlistRef.current.map(f => f.name),
+                durations: next
+              }),
+            });
+
+            return next;
+          });
+        }
+
         if (autoplayRef.current) {
           // Fade in
           wavesurfer.setVolume(0);
@@ -303,7 +326,7 @@ export default function PlayerPage() {
   useEffect(() => {
     Promise.all([
       fetch(`/api/files?path=${folderPath}`).then(res => res.json()) as Promise<{ files: FileItem[] }>,
-      fetch(`/api/running-order?path=${runningOrderPath}`).then(res => res.ok ? res.json() : null) as Promise<{ playlist: string[] } | null>
+      fetch(`/api/running-order?path=${runningOrderPath}`).then(res => res.ok ? res.json() : null) as Promise<{ playlist: string[], durations?: Record<string, number> } | null>
     ]).then(([filesData, orderData]) => {
       const allFiles = filesData.files || [];
       const audioFiles = allFiles.filter(f => f.type === 'file' && f.name.match(/\.(mp3|wav|ogg)$/i));
@@ -312,12 +335,17 @@ export default function PlayerPage() {
       if (audioFiles.length > 0) {
         setIsFolderView(false);
         let pl = audioFiles;
-        if (orderData && orderData.playlist) {
-          const orderedNames = orderData.playlist;
-          const fileMap = new Map(audioFiles.map((f: FileItem) => [f.name, f]));
-          const orderedPlaylist = orderedNames.map((name: string) => fileMap.get(name)).filter((item): item is FileItem => !!item);
-          const newFiles = audioFiles.filter((f: FileItem) => !orderedNames.includes(f.name));
-          pl = [...orderedPlaylist, ...newFiles];
+        if (orderData) {
+          if (orderData.durations) {
+            setTrackDurations(orderData.durations);
+          }
+          if (orderData.playlist) {
+            const orderedNames = orderData.playlist;
+            const fileMap = new Map(audioFiles.map((f: FileItem) => [f.name, f]));
+            const orderedPlaylist = orderedNames.map((name: string) => fileMap.get(name)).filter((item): item is FileItem => !!item);
+            const newFiles = audioFiles.filter((f: FileItem) => !orderedNames.includes(f.name));
+            pl = [...orderedPlaylist, ...newFiles];
+          }
         }
         setPlaylist(pl);
         if (pl.length > 0) setCurrentTrack(pl[0]);
@@ -362,7 +390,10 @@ export default function PlayerPage() {
     fetch(`/api/running-order?path=${runningOrderPath}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlist: currentPlaylist.map(f => f.name) }),
+      body: JSON.stringify({
+        playlist: currentPlaylist.map(f => f.name),
+        durations: trackDurations
+      }),
     });
   };
 
@@ -740,7 +771,12 @@ export default function PlayerPage() {
           </div>
 
           <div>
-            <h2 className="text-xl font-black mb-6 text-gray-900 flex items-center gap-2"><span className="w-1.5 h-6 bg-blue-500 rounded-full"></span>Running Order</h2>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black text-gray-900 flex items-center gap-2"><span className="w-1.5 h-6 bg-blue-500 rounded-full"></span>Running Order</h2>
+              {playlist.length > 0 && playlist.every(f => trackDurations[f.name] !== undefined) && (
+                <span className="text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1 rounded-full uppercase tracking-wider">Total: {formatTime(playlist.reduce((sum, f) => sum + (trackDurations[f.name] || 0), 0))}</span>
+              )}
+            </div>
             <DragDropContext onDragEnd={onDragEnd}>
               <Droppable droppableId="playlist">
                 {(provided) => (
