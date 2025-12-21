@@ -8,6 +8,7 @@ import FolderView from './FolderView';
 import PlayerView from './PlayerView';
 import { useComments } from './hooks/useComments';
 import { useWavesurferPlayer } from './hooks/useWavesurferPlayer';
+import { buildTrackDataFromAudioUrl, type TrackData } from './utils/trackData';
 import type { FileItem } from './types';
 
 const PlayerPageContainer = () => {
@@ -38,6 +39,7 @@ const PlayerPageContainer = () => {
   const [generatingTrackName, setGeneratingTrackName] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const trackDataInitRef = useRef<string | null>(null);
 
   const commentsPath = currentTrack ? `${folderPath}/${currentTrack.name}.comments.json` : null;
   const {
@@ -111,6 +113,83 @@ const PlayerPageContainer = () => {
       setIsLoading(false);
     });
   }, [folderPath, runningOrderPath]);
+
+  useEffect(() => {
+    if (!playlist.length) return;
+    if (trackDataInitRef.current === folderPath) return;
+    trackDataInitRef.current = folderPath;
+
+    let isCancelled = false;
+
+    const generateMissingTrackData = async () => {
+      const missingTracks: FileItem[] = [];
+
+      for (const track of playlist) {
+        const trackDataPath = `${folderPath}/${track.name}.track-data.v2.json`;
+        const audioPath = `${folderPath}/${track.name}`;
+        const res = await fetch(`/api/track-data?path=${trackDataPath}&audioPath=${audioPath}&check=1`);
+        if (!res.ok) continue;
+        const data = (await res.json()) as { exists: boolean };
+        if (!data.exists) {
+          missingTracks.push(track);
+        }
+      }
+
+      if (missingTracks.length === 0 || isCancelled) return;
+
+      setIsGeneratingTrackData(true);
+      let nextDurations: Record<string, number> = {};
+
+      for (const track of missingTracks) {
+        if (isCancelled) break;
+        setGeneratingTrackName(track.name);
+
+        const trackDataPath = `${folderPath}/${track.name}.track-data.v2.json`;
+        const nextTrackData: TrackData = await buildTrackDataFromAudioUrl(
+          `/api/audio?path=${folderPath}/${track.name}`,
+          256
+        );
+
+        await fetch(`/api/track-data?path=${trackDataPath}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(nextTrackData),
+        });
+
+        nextDurations = { ...nextDurations, [track.name]: nextTrackData.duration };
+        setTrackDurations((prev) => ({ ...prev, [track.name]: nextTrackData.duration }));
+      }
+
+      if (Object.keys(nextDurations).length > 0 && !isCancelled) {
+        const mergedDurations = { ...trackDurations, ...nextDurations };
+        fetch(`/api/running-order?path=${runningOrderPath}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            playlist: playlist.map((file) => file.name),
+            durations: mergedDurations,
+          }),
+        });
+      }
+
+      if (!isCancelled) {
+        setIsGeneratingTrackData(false);
+        setGeneratingTrackName(null);
+      }
+    };
+
+    generateMissingTrackData().catch((error) => {
+      console.error('Failed to generate track data:', error);
+      if (!isCancelled) {
+        setIsGeneratingTrackData(false);
+        setGeneratingTrackName(null);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [folderPath, playlist, runningOrderPath, trackDurations]);
 
   const onDragEnd: OnDragEndResponder = (result) => {
     if (!result.destination || isGuest) return;

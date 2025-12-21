@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { useWavesurfer } from '@wavesurfer/react';
-import WaveformData, { type WaveformDataInstance } from 'waveform-data';
+import { buildTrackDataFromAudioUrl } from '../utils/trackData';
 
 import type { FileItem } from '../types';
 
@@ -108,46 +108,15 @@ export const useWavesurferPlayer = ({
           return;
         }
 
+        if (!checkData.needsRegeneration) {
+          return;
+        }
+
         if (isCancelled) return;
         setIsGeneratingTrackData(true);
         setGeneratingTrackName(currentTrack.name);
 
-        const audioRes = await fetch(`/api/audio?path=${audioPath}`);
-        if (!audioRes.ok) return;
-        const arrayBuffer = await audioRes.arrayBuffer();
-        const audioContext = new AudioContext();
-        const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-
-        const waveform = await new Promise<WaveformDataInstance>((resolve, reject) => {
-          WaveformData.createFromAudio(
-            {
-              audio_context: audioContext,
-              audio_buffer: decodedBuffer,
-              scale: 256,
-            },
-            (error, data) => {
-              if (error) {
-                reject(error);
-              } else {
-                resolve(data);
-              }
-            }
-          );
-        });
-
-        const channel = waveform.channel(0);
-        const min = channel.min_array();
-        const max = channel.max_array();
-        const computedPeaks = max.map((value, index) => Math.max(Math.abs(min[index]), Math.abs(value)) / 128);
-        const nextDuration = decodedBuffer.duration;
-
-        const nextTrackData = {
-          duration: nextDuration,
-          peaks: computedPeaks,
-          sampleRate: decodedBuffer.sampleRate,
-          scale: 256,
-          generatedAt: new Date().toISOString(),
-        };
+        const nextTrackData = await buildTrackDataFromAudioUrl(`/api/audio?path=${audioPath}`, 256);
 
         await fetch(`/api/track-data?path=${trackDataPath}`, {
           method: 'POST',
@@ -156,10 +125,9 @@ export const useWavesurferPlayer = ({
         });
 
         if (isCancelled) return;
-        setPeaks(computedPeaks);
-        setDuration(nextDuration);
-        updateTrackDurations(nextDuration);
-        await audioContext.close();
+        setPeaks(nextTrackData.peaks);
+        setDuration(nextTrackData.duration);
+        updateTrackDurations(nextTrackData.duration);
       } catch (error) {
         console.error('Failed to load track data:', error);
       } finally {
