@@ -87,6 +87,14 @@ const PlayerView = ({
   onReorder,
   trackDurations,
 }: PlayerViewProps) => {
+  const parentFolderPath = folderPath
+    .split('/')
+    .filter(Boolean)
+    .slice(0, -1)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  const backHref = parentFolderPath ? `/player/${parentFolderPath}` : '/';
+
   const handlePostComment = () => {
     const didAdd = addComment({
       text: newComment,
@@ -107,15 +115,7 @@ const PlayerView = ({
           <div>
             {!isGuest && (
               <Link
-                href={
-                  folderPath.includes('/')
-                    ? `/player/${folderPath
-                        .split('/')
-                        .slice(0, -1)
-                        .map((segment) => encodeURIComponent(segment))
-                        .join('/')}`
-                    : '/'
-                }
+                href={backHref}
                 className="text-blue-500 mb-4 block hover:underline flex items-center gap-1"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
