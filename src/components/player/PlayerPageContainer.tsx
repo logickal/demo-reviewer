@@ -243,7 +243,7 @@ const PlayerPageContainer = () => {
       confirmDeleteId={confirmDeleteId}
       setConfirmDeleteId={setConfirmDeleteId}
       onSelectTrack={setCurrentTrack}
-      onDragEnd={onDragEnd}
+      onReorder={onDragEnd}
       trackDurations={trackDurations}
     />
   );
