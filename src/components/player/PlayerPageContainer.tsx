@@ -37,6 +37,8 @@ const PlayerPageContainer = () => {
   const [shareSuccess, setShareSuccess] = useState(false);
   const [isGeneratingTrackData, setIsGeneratingTrackData] = useState(false);
   const [generatingTrackName, setGeneratingTrackName] = useState<string | null>(null);
+  const [trackDataTotal, setTrackDataTotal] = useState(0);
+  const [trackDataCompleted, setTrackDataCompleted] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const trackDataInitRef = useRef<string | null>(null);
@@ -137,12 +139,17 @@ const PlayerPageContainer = () => {
 
       if (missingTracks.length === 0 || isCancelled) return;
 
+      console.log(`Generating track data for ${missingTracks.length} track(s) in ${folderPath}`);
+      setTrackDataTotal(missingTracks.length);
+      setTrackDataCompleted(0);
       setIsGeneratingTrackData(true);
       let nextDurations: Record<string, number> = {};
 
+      let completedCount = 0;
       for (const track of missingTracks) {
         if (isCancelled) break;
         setGeneratingTrackName(track.name);
+        console.log(`Generating track data (${completedCount + 1}/${missingTracks.length}): ${track.name}`);
 
         const trackDataPath = `${folderPath}/${track.name}.track-data.v2.json`;
         const nextTrackData: TrackData = await buildTrackDataFromAudioUrl(
@@ -158,6 +165,8 @@ const PlayerPageContainer = () => {
 
         nextDurations = { ...nextDurations, [track.name]: nextTrackData.duration };
         setTrackDurations((prev) => ({ ...prev, [track.name]: nextTrackData.duration }));
+        completedCount += 1;
+        setTrackDataCompleted(completedCount);
       }
 
       if (Object.keys(nextDurations).length > 0 && !isCancelled) {
@@ -175,6 +184,8 @@ const PlayerPageContainer = () => {
       if (!isCancelled) {
         setIsGeneratingTrackData(false);
         setGeneratingTrackName(null);
+        setTrackDataTotal(0);
+        setTrackDataCompleted(0);
       }
     };
 
@@ -183,6 +194,8 @@ const PlayerPageContainer = () => {
       if (!isCancelled) {
         setIsGeneratingTrackData(false);
         setGeneratingTrackName(null);
+        setTrackDataTotal(0);
+        setTrackDataCompleted(0);
       }
     });
 
@@ -339,6 +352,11 @@ const PlayerPageContainer = () => {
           <div className="bg-white rounded-3xl shadow-xl px-8 py-6 text-center max-w-sm w-full">
             <div className="w-12 h-12 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-4"></div>
             <div className="text-lg font-black text-slate-900">Generating track data</div>
+            {trackDataTotal > 0 && (
+              <div className="text-sm text-slate-500 mt-2">
+                {trackDataCompleted} of {trackDataTotal} complete
+              </div>
+            )}
             {generatingTrackName && (
               <div className="text-sm text-slate-500 mt-2 truncate">{generatingTrackName}</div>
             )}

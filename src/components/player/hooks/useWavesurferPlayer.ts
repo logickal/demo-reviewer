@@ -113,6 +113,7 @@ export const useWavesurferPlayer = ({
         }
 
         if (isCancelled) return;
+        console.log(`Regenerating track data for ${currentTrack.name}`);
         setIsGeneratingTrackData(true);
         setGeneratingTrackName(currentTrack.name);
 
@@ -128,6 +129,7 @@ export const useWavesurferPlayer = ({
         setPeaks(nextTrackData.peaks);
         setDuration(nextTrackData.duration);
         updateTrackDurations(nextTrackData.duration);
+        console.log(`Regenerated track data for ${currentTrack.name}`);
       } catch (error) {
         console.error('Failed to load track data:', error);
       } finally {
