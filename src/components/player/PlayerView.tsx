@@ -217,7 +217,7 @@ interface PlayerViewProps {
   onSkipForward: () => void;
   onSkipBackward: () => void;
   onWaveformClick: (e: React.MouseEvent<HTMLDivElement>) => void;
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
   comments: Comment[];
   hoveredCommentTimestamp: number | null;
   setHoveredCommentTimestamp: (timestamp: number | null) => void;
