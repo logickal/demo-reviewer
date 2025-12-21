@@ -24,7 +24,7 @@ const FolderView = ({
   token,
 }: FolderViewProps) => {
   const shareLabel = shareSuccess ? 'Copied!' : 'Share Folder';
-  const tokenSuffix = token ? `?token=${token}` : '';
+  const tokenSuffix = token ? `?token=${encodeURIComponent(token)}` : '';
   const parentFolderPath = folderPath
     .split('/')
     .filter(Boolean)
@@ -32,6 +32,11 @@ const FolderView = ({
     .map((segment) => encodeURIComponent(segment))
     .join('/');
   const backHref = parentFolderPath ? `/player/${parentFolderPath}` : '/';
+  const encodedFolderPath = folderPath
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
 
   return (
     <main className="flex min-h-screen flex-col items-center p-24 bg-gray-50">
@@ -88,7 +93,7 @@ const FolderView = ({
             directories.map((dir) => (
               <Link
                 key={dir.name}
-                href={`/player/${folderPath}/${dir.name}${tokenSuffix}`}
+                href={`/player/${encodedFolderPath ? `${encodedFolderPath}/` : ''}${encodeURIComponent(dir.name)}${tokenSuffix}`}
                 className="group p-6 bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition-all"
               >
                 <div className="flex items-center gap-4">

@@ -25,7 +25,7 @@ export const useComments = (commentsPath: string | null) => {
       return;
     }
     setComments([]);
-    fetch(`/api/comments?path=${commentsPath}`)
+    fetch(`/api/comments?path=${encodeURIComponent(commentsPath)}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.comments) {
@@ -37,7 +37,7 @@ export const useComments = (commentsPath: string | null) => {
   const persistComments = (nextComments: Comment[]) => {
     setComments(nextComments);
     if (!commentsPath) return;
-    fetch(`/api/comments?path=${commentsPath}`, {
+    fetch(`/api/comments?path=${encodeURIComponent(commentsPath)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ comments: nextComments }),
