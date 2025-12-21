@@ -41,6 +41,7 @@ const PlayerPageContainer = () => {
   const [trackDataCompleted, setTrackDataCompleted] = useState(0);
   const [trackDataPhase, setTrackDataPhase] = useState<TrackDataProgress['phase'] | null>(null);
   const [trackDataPercent, setTrackDataPercent] = useState<number | null>(null);
+  const [isTrackDataOverlayDismissed, setIsTrackDataOverlayDismissed] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const trackDataInitRef = useRef<string | null>(null);
@@ -64,6 +65,12 @@ const PlayerPageContainer = () => {
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  useEffect(() => {
+    if (isGeneratingTrackData) {
+      setIsTrackDataOverlayDismissed(false);
+    }
+  }, [isGeneratingTrackData]);
 
   const { wavesurfer, isPlaying, currentTime, duration, onPlayPause } = useWavesurferPlayer({
     containerRef,
@@ -390,7 +397,7 @@ const PlayerPageContainer = () => {
         onReorder={onDragEnd}
         trackDurations={trackDurations}
       />
-      {isGeneratingTrackData && (
+      {isGeneratingTrackData && !isTrackDataOverlayDismissed && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-xl px-8 py-6 text-center max-w-sm w-full">
             <div className="w-12 h-12 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-4"></div>
@@ -414,6 +421,13 @@ const PlayerPageContainer = () => {
               </div>
             )}
             <div className="text-xs text-slate-400 mt-4">This can take a moment the first time.</div>
+            <button
+              type="button"
+              onClick={() => setIsTrackDataOverlayDismissed(true)}
+              className="mt-4 text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors"
+            >
+              Continue in background
+            </button>
           </div>
         </div>
       )}
