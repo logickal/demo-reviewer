@@ -3,11 +3,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { OnDragEndResponder } from '@hello-pangea/dnd';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useWavesurfer } from '@wavesurfer/react';
 
 import FolderView from './FolderView';
 import PlayerView from './PlayerView';
 import { useComments } from './hooks/useComments';
+import { useWavesurferPlayer } from './hooks/useWavesurferPlayer';
 import type { FileItem } from './types';
 
 const PlayerPageContainer = () => {
@@ -29,7 +29,6 @@ const PlayerPageContainer = () => {
   const [isAutoplay, setIsAutoplay] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const [hoveredCommentTimestamp, setHoveredCommentTimestamp] = useState<number | null>(null);
-  const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [trackDurations, setTrackDurations] = useState<Record<string, number>>({});
   const [isShareLoading, setIsShareLoading] = useState(false);
@@ -48,90 +47,24 @@ const PlayerPageContainer = () => {
     setConfirmDeleteId,
   } = useComments(commentsPath);
 
-  const autoplayRef = useRef(isAutoplay);
-  autoplayRef.current = isAutoplay;
-  const playlistRef = useRef(playlist);
-  playlistRef.current = playlist;
-  const currentTrackRef = useRef(currentTrack);
-  currentTrackRef.current = currentTrack;
-  const trackDurationsRef = useRef(trackDurations);
-  trackDurationsRef.current = trackDurations;
-
   const isGuest = useMemo(() => Boolean(token), [token]);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  const { wavesurfer, isPlaying, currentTime } = useWavesurfer({
-    container: containerRef,
-    height: 100,
-    waveColor: 'rgb(200, 200, 200)',
-    progressColor: 'rgb(255, 85, 0)',
-    url: currentTrack ? `/api/audio?path=${folderPath}/${currentTrack.name}` : undefined,
+  const { wavesurfer, isPlaying, currentTime, duration, onPlayPause } = useWavesurferPlayer({
+    containerRef,
+    currentTrack,
+    folderPath,
+    runningOrderPath,
+    playlist,
+    isAutoplay,
+    setIsAutoplay,
+    setCurrentTrack,
+    trackDurations,
+    setTrackDurations,
   });
-
-  useEffect(() => {
-    if (wavesurfer) {
-      const onEnd = () => {
-        if (autoplayRef.current) {
-          const currentIndex = playlistRef.current.findIndex((t) => t.name === currentTrackRef.current?.name);
-          if (currentIndex < playlistRef.current.length - 1) {
-            setCurrentTrack(playlistRef.current[currentIndex + 1]);
-          } else {
-            setIsAutoplay(false);
-          }
-        }
-      };
-
-      const onReady = () => {
-        const d = wavesurfer.getDuration();
-        setDuration(d);
-
-        if (currentTrackRef.current && !trackDurationsRef.current[currentTrackRef.current.name]) {
-          setTrackDurations((prev) => {
-            const next = { ...prev, [currentTrackRef.current!.name]: d };
-
-            fetch(`/api/running-order?path=${runningOrderPath}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                playlist: playlistRef.current.map((f) => f.name),
-                durations: next,
-              }),
-            });
-
-            return next;
-          });
-        }
-
-        if (autoplayRef.current) {
-          wavesurfer.setVolume(0);
-          wavesurfer.play();
-          const fadeDuration = 0.05;
-          const startTime = Date.now();
-
-          const interval = setInterval(() => {
-            const elapsed = (Date.now() - startTime) / 1000;
-            const ratio = Math.min(1, elapsed / fadeDuration);
-            wavesurfer.setVolume(ratio);
-            if (ratio === 1) {
-              clearInterval(interval);
-            }
-          }, 5);
-        }
-      };
-      wavesurfer.on('finish', onEnd);
-      wavesurfer.on('ready', onReady);
-      wavesurfer.on('decode', onReady);
-
-      return () => {
-        wavesurfer.un('finish', onEnd);
-        wavesurfer.un('ready', onReady);
-        wavesurfer.un('decode', onReady);
-      };
-    }
-  }, [runningOrderPath, wavesurfer]);
 
   useEffect(() => {
     Promise.all([
@@ -191,45 +124,6 @@ const PlayerPageContainer = () => {
     });
   };
 
-  const onPlayPause = async () => {
-    if (!wavesurfer) return;
-
-    if (isPlaying) {
-      const fadeDuration = 0.05;
-      const startVolume = wavesurfer.getVolume();
-      const startTime = Date.now();
-
-      await new Promise<void>((resolve) => {
-        const interval = setInterval(() => {
-          const elapsed = (Date.now() - startTime) / 1000;
-          const ratio = Math.max(0, 1 - elapsed / fadeDuration);
-          wavesurfer.setVolume(startVolume * ratio);
-          if (ratio === 0) {
-            clearInterval(interval);
-            resolve();
-          }
-        }, 5);
-      });
-
-      wavesurfer.pause();
-      wavesurfer.setVolume(startVolume);
-    } else {
-      wavesurfer.setVolume(0);
-      wavesurfer.play();
-      const fadeDuration = 0.05;
-      const startTime = Date.now();
-
-      const interval = setInterval(() => {
-        const elapsed = (Date.now() - startTime) / 1000;
-        const ratio = Math.min(1, elapsed / fadeDuration);
-        wavesurfer.setVolume(ratio);
-        if (ratio === 1) {
-          clearInterval(interval);
-        }
-      }, 5);
-    }
-  };
-
   const handlePlayFullSequence = () => {
     if (playlist.length > 0) {
       setIsAutoplay(true);
@@ -260,19 +154,14 @@ const PlayerPageContainer = () => {
     }
   };
 
-  const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current || !wavesurfer) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
-    const time = ratio * wavesurfer.getDuration();
-    if ((e.target as HTMLElement).closest('.comment-marker')) return;
+  const handleSeek = (time: number) => {
+    if (!wavesurfer) return;
+    setNewCommentTimestamp(null);
+    wavesurfer.setTime(time);
+  };
 
-    if (e.metaKey || e.ctrlKey) {
-      setNewCommentTimestamp(time);
-    } else {
-      setNewCommentTimestamp(null);
-      wavesurfer.setTime(time);
-    }
+  const handleCreateComment = (time: number) => {
+    setNewCommentTimestamp(time);
   };
 
   const handleShare = async () => {
@@ -335,7 +224,8 @@ const PlayerPageContainer = () => {
       onPlayFullSequence={handlePlayFullSequence}
       onSkipForward={handleSkipForward}
       onSkipBackward={handleSkipBackward}
-      onWaveformClick={handleWaveformClick}
+      onSeek={handleSeek}
+      onCreateComment={handleCreateComment}
       containerRef={containerRef}
       comments={comments}
       hoveredCommentTimestamp={hoveredCommentTimestamp}
