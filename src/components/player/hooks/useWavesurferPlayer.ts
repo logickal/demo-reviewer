@@ -55,7 +55,7 @@ export const useWavesurferPlayer = ({
     waveColor: 'rgb(200, 200, 200)',
     progressColor: 'rgb(255, 85, 0)',
     url: currentTrack ? `/api/audio?path=${folderPath}/${currentTrack.name}` : undefined,
-    peaks,
+    peaks: peaks ? [peaks] : undefined,
     duration: peaks ? duration : undefined,
   });
 
