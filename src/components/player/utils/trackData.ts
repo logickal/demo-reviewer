@@ -10,18 +10,69 @@ export type TrackData = {
   generatedAt: string;
 };
 
-export const buildTrackDataFromAudioUrl = async (audioUrl: string, scale = 256): Promise<TrackData> => {
+export type TrackDataProgress = {
+  phase: 'downloading' | 'decoding' | 'waveform' | 'saving';
+  percent?: number;
+};
+
+const readResponseArrayBuffer = async (
+  response: Response,
+  onProgress?: (progress: TrackDataProgress) => void
+): Promise<ArrayBuffer> => {
+  if (!response.body) {
+    return response.arrayBuffer();
+  }
+
+  const reader = response.body.getReader();
+  const contentLengthHeader = response.headers.get('Content-Length');
+  const contentLength = contentLengthHeader ? Number(contentLengthHeader) : undefined;
+  let receivedLength = 0;
+  const chunks: Uint8Array[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      receivedLength += value.length;
+      if (contentLength && onProgress) {
+        onProgress({
+          phase: 'downloading',
+          percent: Math.min(100, Math.round((receivedLength / contentLength) * 100)),
+        });
+      }
+    }
+  }
+
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(totalLength);
+  let position = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, position);
+    position += chunk.length;
+  }
+  return result.buffer;
+};
+
+export const buildTrackDataFromAudioUrl = async (
+  audioUrl: string,
+  scale = 256,
+  onProgress?: (progress: TrackDataProgress) => void
+): Promise<TrackData> => {
+  onProgress?.({ phase: 'downloading' });
   const audioRes = await fetch(audioUrl);
   if (!audioRes.ok) {
     throw new Error('Failed to load audio');
   }
 
-  const arrayBuffer = await audioRes.arrayBuffer();
+  const arrayBuffer = await readResponseArrayBuffer(audioRes, onProgress);
   const audioContext = new AudioContext();
 
   try {
+    onProgress?.({ phase: 'decoding' });
     const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
 
+    onProgress?.({ phase: 'waveform' });
     const waveform = await new Promise<WaveformDataInstance>((resolve, reject) => {
       WaveformData.createFromAudio(
         {

@@ -8,7 +8,7 @@ import FolderView from './FolderView';
 import PlayerView from './PlayerView';
 import { useComments } from './hooks/useComments';
 import { useWavesurferPlayer } from './hooks/useWavesurferPlayer';
-import { buildTrackDataFromAudioUrl, type TrackData } from './utils/trackData';
+import { buildTrackDataFromAudioUrl, type TrackData, type TrackDataProgress } from './utils/trackData';
 import type { FileItem } from './types';
 
 const PlayerPageContainer = () => {
@@ -39,6 +39,8 @@ const PlayerPageContainer = () => {
   const [generatingTrackName, setGeneratingTrackName] = useState<string | null>(null);
   const [trackDataTotal, setTrackDataTotal] = useState(0);
   const [trackDataCompleted, setTrackDataCompleted] = useState(0);
+  const [trackDataPhase, setTrackDataPhase] = useState<TrackDataProgress['phase'] | null>(null);
+  const [trackDataPercent, setTrackDataPercent] = useState<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const trackDataInitRef = useRef<string | null>(null);
@@ -142,6 +144,8 @@ const PlayerPageContainer = () => {
       console.log(`Generating track data for ${missingTracks.length} track(s) in ${folderPath}`);
       setTrackDataTotal(missingTracks.length);
       setTrackDataCompleted(0);
+      setTrackDataPhase('downloading');
+      setTrackDataPercent(null);
       setIsGeneratingTrackData(true);
       let nextDurations: Record<string, number> = {};
 
@@ -154,14 +158,25 @@ const PlayerPageContainer = () => {
         const trackDataPath = `${folderPath}/${track.name}.track-data.v2.json`;
         const nextTrackData: TrackData = await buildTrackDataFromAudioUrl(
           `/api/audio?path=${folderPath}/${track.name}`,
-          256
+          256,
+          (progress) => {
+            if (isCancelled) return;
+            setTrackDataPhase(progress.phase);
+            if (progress.percent !== undefined) {
+              setTrackDataPercent(progress.percent);
+            } else {
+              setTrackDataPercent(null);
+            }
+          }
         );
 
+        setTrackDataPhase('saving');
         await fetch(`/api/track-data?path=${trackDataPath}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(nextTrackData),
         });
+        setTrackDataPercent(null);
 
         nextDurations = { ...nextDurations, [track.name]: nextTrackData.duration };
         setTrackDurations((prev) => ({ ...prev, [track.name]: nextTrackData.duration }));
@@ -186,6 +201,8 @@ const PlayerPageContainer = () => {
         setGeneratingTrackName(null);
         setTrackDataTotal(0);
         setTrackDataCompleted(0);
+        setTrackDataPhase(null);
+        setTrackDataPercent(null);
       }
     };
 
@@ -196,6 +213,8 @@ const PlayerPageContainer = () => {
         setGeneratingTrackName(null);
         setTrackDataTotal(0);
         setTrackDataCompleted(0);
+        setTrackDataPhase(null);
+        setTrackDataPercent(null);
       }
     });
 
@@ -359,6 +378,15 @@ const PlayerPageContainer = () => {
             )}
             {generatingTrackName && (
               <div className="text-sm text-slate-500 mt-2 truncate">{generatingTrackName}</div>
+            )}
+            {trackDataPhase && (
+              <div className="text-xs text-slate-400 mt-2">
+                {trackDataPhase === 'downloading' && 'Downloading audio'}
+                {trackDataPhase === 'decoding' && 'Decoding audio'}
+                {trackDataPhase === 'waveform' && 'Generating waveform'}
+                {trackDataPhase === 'saving' && 'Saving data'}
+                {trackDataPercent !== null && ` • ${trackDataPercent}%`}
+              </div>
             )}
             <div className="text-xs text-slate-400 mt-4">This can take a moment the first time.</div>
           </div>

@@ -117,7 +117,9 @@ export const useWavesurferPlayer = ({
         setIsGeneratingTrackData(true);
         setGeneratingTrackName(currentTrack.name);
 
-        const nextTrackData = await buildTrackDataFromAudioUrl(`/api/audio?path=${audioPath}`, 256);
+        const nextTrackData = await buildTrackDataFromAudioUrl(`/api/audio?path=${audioPath}`, 256, (progress) => {
+          console.log(`Track data ${progress.phase} for ${currentTrack.name}`);
+        });
 
         await fetch(`/api/track-data?path=${trackDataPath}`, {
           method: 'POST',
