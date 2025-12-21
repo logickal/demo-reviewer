@@ -9,6 +9,7 @@ export interface StorageProvider {
     listFiles(path: string): Promise<FileItem[]>;
     getFile(path: string): Promise<any>;
     saveFile(path: string, data: any): Promise<void>;
+    getFileMetadata(path: string): Promise<{ updated: Date } | null>;
     getAudioStream(path: string): Promise<ReadableStream | NodeJS.ReadableStream>;
     getAudioUrl?(path: string): Promise<string>;
 }
@@ -83,6 +84,21 @@ export class GoogleCloudStorageProvider implements StorageProvider {
 
     async saveFile(path: string, data: any): Promise<void> {
         await this.storage.bucket(this.bucketName).file(path).save(JSON.stringify(data, null, 2));
+    }
+
+    async getFileMetadata(path: string): Promise<{ updated: Date } | null> {
+        try {
+            const [metadata] = await this.storage.bucket(this.bucketName).file(path).getMetadata();
+            if (!metadata.updated) {
+                return null;
+            }
+            return { updated: new Date(metadata.updated) };
+        } catch (error: any) {
+            if (error.code === 404) {
+                return null;
+            }
+            throw error;
+        }
     }
 
     async getAudioStream(path: string): Promise<NodeJS.ReadableStream> {
