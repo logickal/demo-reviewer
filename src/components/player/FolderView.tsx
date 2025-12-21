@@ -33,7 +33,15 @@ const FolderView = ({
           <div>
             {!isGuest && (
               <Link
-                href={folderPath.includes('/') ? `/player/${folderPath.split('/').slice(0, -1).join('/')}` : '/'}
+                href={
+                  folderPath.includes('/')
+                    ? `/player/${folderPath
+                        .split('/')
+                        .slice(0, -1)
+                        .map((segment) => encodeURIComponent(segment))
+                        .join('/')}`
+                    : '/'
+                }
                 className="text-blue-500 mb-4 hover:underline flex items-center gap-1"
               >
                 <svg
