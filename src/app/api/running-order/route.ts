@@ -6,18 +6,27 @@ import { ROOT_DIR } from '@/lib/config';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const rawPath = searchParams.get('path');
+  const legacyPath = searchParams.get('legacyPath');
 
   if (!rawPath) {
     return new Response('Path is required', { status: 400 });
   }
 
   const path = `${ROOT_DIR}${rawPath}`;
+  const legacyFullPath = legacyPath ? `${ROOT_DIR}${legacyPath}` : null;
 
   try {
     const data = await storage.getFile(path);
     if (data) {
       return NextResponse.json(data);
     } else {
+      if (legacyFullPath) {
+        const legacyData = await storage.getFile(legacyFullPath);
+        if (legacyData) {
+          await storage.saveFile(path, legacyData);
+          return NextResponse.json(legacyData);
+        }
+      }
       return new Response('Running order not found', { status: 404 });
     }
   } catch (error) {
