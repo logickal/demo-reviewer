@@ -11,7 +11,7 @@ export type TrackData = {
 };
 
 export type TrackDataProgress = {
-  phase: 'downloading' | 'decoding' | 'waveform' | 'saving';
+  phase: 'downloading' | 'decoding' | 'waveform' | 'saving' | 'verifying';
   percent?: number;
 };
 

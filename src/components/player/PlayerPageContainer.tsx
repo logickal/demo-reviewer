@@ -176,6 +176,27 @@ const PlayerPageContainer = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(nextTrackData),
         });
+
+        setTrackDataPhase('verifying');
+        let verified = false;
+        for (let attempt = 1; attempt <= 8; attempt += 1) {
+          if (isCancelled) break;
+          await new Promise((resolve) => setTimeout(resolve, attempt * 750));
+          const verifyRes = await fetch(
+            `/api/track-data?path=${trackDataPath}&check=1`
+          );
+          if (!verifyRes.ok) continue;
+          const verifyData = (await verifyRes.json()) as { exists: boolean };
+          if (verifyData.exists) {
+            verified = true;
+            break;
+          }
+        }
+
+        if (!verified) {
+          console.warn(`Track data save still pending for ${track.name}`);
+        }
+
         setTrackDataPercent(null);
 
         nextDurations = { ...nextDurations, [track.name]: nextTrackData.duration };
@@ -385,6 +406,7 @@ const PlayerPageContainer = () => {
                 {trackDataPhase === 'decoding' && 'Decoding audio'}
                 {trackDataPhase === 'waveform' && 'Generating waveform'}
                 {trackDataPhase === 'saving' && 'Saving data'}
+                {trackDataPhase === 'verifying' && 'Verifying upload'}
                 {trackDataPercent !== null && ` • ${trackDataPercent}%`}
               </div>
             )}
