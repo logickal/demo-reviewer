@@ -7,7 +7,8 @@ import { useWavesurfer } from '@wavesurfer/react';
 
 import FolderView from './FolderView';
 import PlayerView from './PlayerView';
-import type { Comment, FileItem } from './types';
+import { useComments } from './hooks/useComments';
+import type { FileItem } from './types';
 
 const PlayerPageContainer = () => {
   const params = useParams();
@@ -22,7 +23,6 @@ const PlayerPageContainer = () => {
   const [directories, setDirectories] = useState<FileItem[]>([]);
   const [isFolderView, setIsFolderView] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<FileItem | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [newCommentInitials, setNewCommentInitials] = useState('');
   const [newCommentTimestamp, setNewCommentTimestamp] = useState<number | null>(null);
@@ -31,10 +31,6 @@ const PlayerPageContainer = () => {
   const [hoveredCommentTimestamp, setHoveredCommentTimestamp] = useState<number | null>(null);
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [replyingToCommentId, setReplyingToCommentId] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState('');
-  const [replyInitials, setReplyInitials] = useState('');
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [trackDurations, setTrackDurations] = useState<Record<string, number>>({});
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
@@ -42,6 +38,15 @@ const PlayerPageContainer = () => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const commentsPath = currentTrack ? `${folderPath}/${currentTrack.name}.comments.json` : null;
+  const {
+    comments,
+    addComment,
+    deleteComment,
+    replyingToCommentId,
+    setReplyingToCommentId,
+    confirmDeleteId,
+    setConfirmDeleteId,
+  } = useComments(commentsPath);
 
   const autoplayRef = useRef(isAutoplay);
   autoplayRef.current = isAutoplay;
@@ -166,25 +171,6 @@ const PlayerPageContainer = () => {
     });
   }, [folderPath, runningOrderPath]);
 
-  useEffect(() => {
-    if (!commentsPath) {
-      setComments([]);
-      return;
-    }
-    setComments([]);
-    fetch(`/api/comments?path=${commentsPath}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.comments) {
-          const commentsWithIds = data.comments.map((c: Comment) => ({
-            ...c,
-            id: c.id || `${c.timestamp}-${c.initials}-${c.text.substring(0, 10)}`,
-          }));
-          setComments(commentsWithIds);
-        }
-      });
-  }, [commentsPath]);
-
   const onDragEnd: OnDragEndResponder = (result) => {
     if (!result.destination || isGuest) return;
     const items = Array.from(playlist);
@@ -203,41 +189,6 @@ const PlayerPageContainer = () => {
         durations: trackDurations,
       }),
     });
-  };
-
-  const handleAddComment = (parentId?: string) => {
-    const isReply = !!parentId;
-    const text = isReply ? replyText : newComment;
-    const initials = isReply ? replyInitials : newCommentInitials;
-    const timestamp = isReply ? comments.find((c) => c.id === parentId)?.timestamp ?? 0 : newCommentTimestamp;
-
-    if (text.trim() && initials.trim() && timestamp !== null && commentsPath) {
-      const newCommentData: Comment = {
-        id: crypto.randomUUID(),
-        timestamp,
-        text,
-        initials,
-        parentId,
-      };
-      const newComments: Comment[] = [...comments, newCommentData];
-      setComments(newComments);
-
-      if (isReply) {
-        setReplyText('');
-        setReplyInitials('');
-        setReplyingToCommentId(null);
-      } else {
-        setNewComment('');
-        setNewCommentInitials('');
-        setNewCommentTimestamp(null);
-      }
-
-      fetch(`/api/comments?path=${commentsPath}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comments: newComments }),
-      });
-    }
   };
 
   const onPlayPause = async () => {
@@ -324,19 +275,6 @@ const PlayerPageContainer = () => {
     }
   };
 
-  const handleDeleteComment = (id: string) => {
-    if (commentsPath) {
-      const newComments = comments.filter((c) => c.id !== id);
-      setComments(newComments);
-      setConfirmDeleteId(null);
-      fetch(`/api/comments?path=${commentsPath}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comments: newComments }),
-      });
-    }
-  };
-
   const handleShare = async () => {
     setIsShareLoading(true);
     setShareSuccess(false);
@@ -408,14 +346,10 @@ const PlayerPageContainer = () => {
       setNewComment={setNewComment}
       setNewCommentInitials={setNewCommentInitials}
       setNewCommentTimestamp={setNewCommentTimestamp}
-      onAddComment={handleAddComment}
       replyingToCommentId={replyingToCommentId}
       setReplyingToCommentId={setReplyingToCommentId}
-      replyText={replyText}
-      setReplyText={setReplyText}
-      replyInitials={replyInitials}
-      setReplyInitials={setReplyInitials}
-      onDeleteComment={handleDeleteComment}
+      addComment={addComment}
+      deleteComment={deleteComment}
       confirmDeleteId={confirmDeleteId}
       setConfirmDeleteId={setConfirmDeleteId}
       onSelectTrack={setCurrentTrack}
