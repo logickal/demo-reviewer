@@ -47,6 +47,7 @@ interface PlayerViewProps {
   onSelectTrack: (track: FileItem) => void;
   onReorder: OnDragEndResponder;
   trackDurations: Record<string, number>;
+  trackDataStatus: Record<string, 'present' | 'missing'>;
 }
 
 const PlayerView = ({
@@ -86,6 +87,7 @@ const PlayerView = ({
   onSelectTrack,
   onReorder,
   trackDurations,
+  trackDataStatus,
 }: PlayerViewProps) => {
   const parentFolderPath = folderPath
     .split('/')
@@ -276,6 +278,7 @@ const PlayerView = ({
             currentTrack={currentTrack}
             isGuest={isGuest}
             trackDurations={trackDurations}
+            trackDataStatus={trackDataStatus}
             onSelectTrack={onSelectTrack}
             onReorder={onReorder}
           />

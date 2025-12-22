@@ -109,6 +109,21 @@ export class GoogleCloudStorageProvider implements StorageProvider {
         }
         return file.createReadStream();
     }
+
+    async getAudioUrl(path: string): Promise<string> {
+        const file = this.storage.bucket(this.bucketName).file(path);
+        const [exists] = await file.exists();
+        if (!exists) {
+            throw new Error(`File not found: ${path}`);
+        }
+
+        const [url] = await file.getSignedUrl({
+            version: 'v4',
+            action: 'read',
+            expires: Date.now() + 15 * 60 * 1000,
+        });
+        return url;
+    }
 }
 
 // Singleton instance

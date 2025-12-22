@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { useWavesurfer } from '@wavesurfer/react';
 import { buildTrackDataFromAudioUrl } from '../utils/trackData';
+import { fetchTrackData } from '../utils/trackDataClient';
 
 import type { FileItem } from '../types';
 
@@ -20,6 +21,9 @@ type UseWavesurferPlayerOptions = {
   setTrackDurations: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   setIsGeneratingTrackData: (value: boolean) => void;
   setGeneratingTrackName: (value: string | null) => void;
+  setTrackDataPhase?: (value: 'downloading' | 'decoding' | 'waveform' | 'saving' | 'verifying' | null) => void;
+  setTrackDataPercent?: (value: number | null) => void;
+  queueRunningOrderSave?: (playlist: FileItem[]) => void;
 };
 
 export const useWavesurferPlayer = ({
@@ -35,9 +39,13 @@ export const useWavesurferPlayer = ({
   setTrackDurations,
   setIsGeneratingTrackData,
   setGeneratingTrackName,
+  setTrackDataPhase,
+  setTrackDataPercent,
+  queueRunningOrderSave,
 }: UseWavesurferPlayerOptions) => {
   const [duration, setDuration] = useState(0);
   const [peaks, setPeaks] = useState<number[] | undefined>(undefined);
+  const [signedAudioUrl, setSignedAudioUrl] = useState<string | undefined>(undefined);
 
   const autoplayRef = useRef(isAutoplay);
   const playlistRef = useRef(playlist);
@@ -49,15 +57,19 @@ export const useWavesurferPlayer = ({
   currentTrackRef.current = currentTrack;
   trackDurationsRef.current = trackDurations;
 
+  const peaksForWavesurfer = useMemo(() => (peaks ? [peaks] : undefined), [peaks]);
+  const audioPath = useMemo(() => {
+    if (!currentTrack) return null;
+    return `${folderPath}/${currentTrack.name}`;
+  }, [currentTrack, folderPath]);
+
   const { wavesurfer, isPlaying, currentTime } = useWavesurfer({
     container: containerRef,
     height: 100,
     waveColor: 'rgb(200, 200, 200)',
     progressColor: 'rgb(255, 85, 0)',
-    url: currentTrack
-      ? `/api/audio?path=${encodeURIComponent(`${folderPath}/${currentTrack.name}`)}`
-      : undefined,
-    peaks: peaks ? [peaks] : undefined,
+    url: signedAudioUrl,
+    peaks: peaksForWavesurfer,
     duration: peaks ? duration : undefined,
   });
 
@@ -65,8 +77,38 @@ export const useWavesurferPlayer = ({
     if (!currentTrack) {
       setDuration(0);
       setPeaks(undefined);
+      setSignedAudioUrl(undefined);
     }
   }, [currentTrack]);
+
+  useEffect(() => {
+    if (!audioPath) {
+      setSignedAudioUrl(undefined);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadSignedUrl = async () => {
+      try {
+        const res = await fetch(`/api/audio-url?path=${encodeURIComponent(audioPath)}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { url?: string };
+        if (isCancelled) return;
+        setSignedAudioUrl(data.url);
+      } catch (error) {
+        if (!isCancelled) {
+          setSignedAudioUrl(undefined);
+        }
+      }
+    };
+
+    loadSignedUrl();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [audioPath]);
 
   useEffect(() => {
     if (!currentTrack) return;
@@ -76,15 +118,7 @@ export const useWavesurferPlayer = ({
       if (trackDurationsRef.current[currentTrack.name]) return;
       setTrackDurations((prev) => {
         const next = { ...prev, [currentTrack.name]: nextDuration };
-
-        fetch(`/api/running-order?path=${encodeURIComponent(runningOrderPath)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            playlist: playlistRef.current.map((file) => file.name),
-            durations: next,
-          }),
-        });
+        queueRunningOrderSave?.(playlistRef.current);
 
         return next;
       });
@@ -92,9 +126,22 @@ export const useWavesurferPlayer = ({
 
     const loadTrackData = async () => {
       const trackDataPath = `${folderPath}/${currentTrack.name}.track-data.v2.json`;
-      const audioPath = `${folderPath}/${currentTrack.name}`;
+      const audioPathForCheck = `${folderPath}/${currentTrack.name}`;
       const encodedTrackDataPath = encodeURIComponent(trackDataPath);
-      const encodedAudioPath = encodeURIComponent(audioPath);
+      const encodedAudioPath = encodeURIComponent(audioPathForCheck);
+
+      const getSignedAudioUrl = async () => {
+        if (signedAudioUrl) return signedAudioUrl;
+        const res = await fetch(`/api/audio-url?path=${encodedAudioPath}`);
+        if (!res.ok) {
+          throw new Error('Failed to load signed audio URL');
+        }
+        const data = (await res.json()) as { url?: string };
+        if (!data.url) {
+          throw new Error('Signed audio URL missing');
+        }
+        return data.url;
+      };
 
       try {
         const checkRes = await fetch(
@@ -104,9 +151,8 @@ export const useWavesurferPlayer = ({
         const checkData = (await checkRes.json()) as { exists: boolean; needsRegeneration: boolean };
 
         if (checkData.exists && !checkData.needsRegeneration) {
-          const dataRes = await fetch(`/api/track-data?path=${encodedTrackDataPath}`);
-          if (!dataRes.ok) return;
-          const trackData = (await dataRes.json()) as { peaks: number[]; duration: number };
+          const trackData = await fetchTrackData(trackDataPath);
+          if (!trackData) return;
           if (isCancelled) return;
           setPeaks(trackData.peaks);
           setDuration(trackData.duration);
@@ -114,19 +160,25 @@ export const useWavesurferPlayer = ({
           return;
         }
 
-        if (!checkData.needsRegeneration) {
-          return;
-        }
+        // If track data is missing or stale, generate it on demand.
 
         if (isCancelled) return;
         console.log(`Regenerating track data for ${currentTrack.name}`);
         setIsGeneratingTrackData(true);
         setGeneratingTrackName(currentTrack.name);
+        setTrackDataPhase?.('downloading');
+        setTrackDataPercent?.(null);
 
-        const nextTrackData = await buildTrackDataFromAudioUrl(`/api/audio?path=${encodedAudioPath}`, 256, (progress) => {
-          console.log(`Track data ${progress.phase} for ${currentTrack.name}`);
+        const nextTrackData = await buildTrackDataFromAudioUrl(await getSignedAudioUrl(), 256, (progress) => {
+          setTrackDataPhase?.(progress.phase);
+          if (progress.percent !== undefined) {
+            setTrackDataPercent?.(progress.percent);
+          } else {
+            setTrackDataPercent?.(null);
+          }
         });
 
+        setTrackDataPhase?.('saving');
         await fetch(`/api/track-data?path=${encodedTrackDataPath}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -144,6 +196,8 @@ export const useWavesurferPlayer = ({
         if (!isCancelled) {
           setIsGeneratingTrackData(false);
           setGeneratingTrackName(null);
+          setTrackDataPhase?.(null);
+          setTrackDataPercent?.(null);
         }
       }
     };
@@ -159,8 +213,11 @@ export const useWavesurferPlayer = ({
     currentTrack,
     folderPath,
     runningOrderPath,
+    queueRunningOrderSave,
     setGeneratingTrackName,
     setIsGeneratingTrackData,
+    setTrackDataPercent,
+    setTrackDataPhase,
     setTrackDurations,
   ]);
 
@@ -179,20 +236,13 @@ export const useWavesurferPlayer = ({
 
     const onReady = () => {
       const nextDuration = wavesurfer.getDuration();
-      setDuration(nextDuration);
+      if (!Number.isFinite(nextDuration)) return;
+      setDuration((prev) => (prev === nextDuration ? prev : nextDuration));
 
       if (currentTrackRef.current && !trackDurationsRef.current[currentTrackRef.current.name]) {
         setTrackDurations((prev) => {
           const next = { ...prev, [currentTrackRef.current!.name]: nextDuration };
-
-          fetch(`/api/running-order?path=${encodeURIComponent(runningOrderPath)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              playlist: playlistRef.current.map((file) => file.name),
-              durations: next,
-            }),
-          });
+          queueRunningOrderSave?.(playlistRef.current);
 
           return next;
         });
@@ -217,12 +267,11 @@ export const useWavesurferPlayer = ({
 
     wavesurfer.on('finish', onEnd);
     wavesurfer.on('ready', onReady);
-    wavesurfer.on('decode', onReady);
+    // Avoid double-triggering duration updates on both ready and decode.
 
     return () => {
       wavesurfer.un('finish', onEnd);
       wavesurfer.un('ready', onReady);
-      wavesurfer.un('decode', onReady);
     };
   }, [runningOrderPath, setCurrentTrack, setIsAutoplay, setTrackDurations, wavesurfer]);
 
