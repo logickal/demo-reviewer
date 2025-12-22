@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { OnDragEndResponder } from '@hello-pangea/dnd';
 import { useParams, useSearchParams } from 'next/navigation';
 
@@ -8,7 +8,8 @@ import FolderView from './FolderView';
 import PlayerView from './PlayerView';
 import { useComments } from './hooks/useComments';
 import { useWavesurferPlayer } from './hooks/useWavesurferPlayer';
-import { buildTrackDataFromAudioUrl, type TrackData, type TrackDataProgress } from './utils/trackData';
+import type { TrackDataProgress } from './utils/trackData';
+import { fetchTrackData, fetchTrackDataBatch } from './utils/trackDataClient';
 import type { FileItem } from './types';
 
 const PlayerPageContainer = () => {
@@ -17,6 +18,7 @@ const PlayerPageContainer = () => {
   const slugParam = params.slug;
   const slug = Array.isArray(slugParam) ? slugParam : slugParam ? [slugParam] : [];
   const token = searchParams.get('token');
+  const debugDurations = searchParams.get('debugDurations') === '1';
   const folderPath = slug.join('/');
   const runningOrderPath = `${folderPath}/running-order.v2.json`;
   const legacyRunningOrderPath = `${folderPath}/running-order.json`;
@@ -33,18 +35,23 @@ const PlayerPageContainer = () => {
   const [hoveredCommentTimestamp, setHoveredCommentTimestamp] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [trackDurations, setTrackDurations] = useState<Record<string, number>>({});
+  const [trackDataStatus, setTrackDataStatus] = useState<Record<string, 'present' | 'missing'>>({});
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
   const [isGeneratingTrackData, setIsGeneratingTrackData] = useState(false);
   const [generatingTrackName, setGeneratingTrackName] = useState<string | null>(null);
-  const [trackDataTotal, setTrackDataTotal] = useState(0);
-  const [trackDataCompleted, setTrackDataCompleted] = useState(0);
   const [trackDataPhase, setTrackDataPhase] = useState<TrackDataProgress['phase'] | null>(null);
   const [trackDataPercent, setTrackDataPercent] = useState<number | null>(null);
   const [isTrackDataOverlayDismissed, setIsTrackDataOverlayDismissed] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const trackDataInitRef = useRef<string | null>(null);
+  const pendingDurationFetchRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    setTrackDurations({});
+    setTrackDataStatus({});
+    pendingDurationFetchRef.current.clear();
+  }, [folderPath]);
 
   const commentsPath = currentTrack ? `${folderPath}/${currentTrack.name}.comments.json` : null;
   const encodedFolderPath = encodeURIComponent(folderPath);
@@ -72,6 +79,35 @@ const PlayerPageContainer = () => {
     }
   }, [isGeneratingTrackData]);
 
+  const saveRunningOrderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const queueRunningOrderSave = useCallback(
+    (nextPlaylist: FileItem[]) => {
+      if (saveRunningOrderTimeoutRef.current) {
+        clearTimeout(saveRunningOrderTimeoutRef.current);
+      }
+
+      saveRunningOrderTimeoutRef.current = setTimeout(() => {
+        fetch(`/api/running-order?path=${encodedRunningOrderPath}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            playlist: nextPlaylist.map((file) => file.name),
+          }),
+        });
+      }, 800);
+    },
+    [encodedRunningOrderPath]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (saveRunningOrderTimeoutRef.current) {
+        clearTimeout(saveRunningOrderTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const { wavesurfer, isPlaying, currentTime, duration, onPlayPause } = useWavesurferPlayer({
     containerRef,
     currentTrack,
@@ -85,6 +121,9 @@ const PlayerPageContainer = () => {
     setTrackDurations,
     setIsGeneratingTrackData,
     setGeneratingTrackName,
+    setTrackDataPhase,
+    setTrackDataPercent,
+    queueRunningOrderSave,
   });
 
   useEffect(() => {
@@ -92,7 +131,7 @@ const PlayerPageContainer = () => {
       fetch(`/api/files?path=${encodedFolderPath}`).then((res) => res.json()) as Promise<{ files: FileItem[] }>,
       fetch(`/api/running-order?path=${encodedRunningOrderPath}&legacyPath=${encodedLegacyRunningOrderPath}`).then((res) =>
         res.ok ? res.json() : null
-      ) as Promise<{ playlist: string[]; durations?: Record<string, number> } | null>,
+      ) as Promise<{ playlist: string[] } | null>,
     ]).then(([filesData, orderData]) => {
       const allFiles = filesData.files || [];
       const audioFiles = allFiles.filter((f) => f.type === 'file' && f.name.match(/\.(mp3|wav|ogg)$/i));
@@ -102,9 +141,6 @@ const PlayerPageContainer = () => {
         setIsFolderView(false);
         let pl = audioFiles;
         if (orderData) {
-          if (orderData.durations) {
-            setTrackDurations(orderData.durations);
-          }
           if (orderData.playlist) {
             const orderedNames = orderData.playlist;
             const fileMap = new Map(audioFiles.map((f) => [f.name, f]));
@@ -118,7 +154,7 @@ const PlayerPageContainer = () => {
         setPlaylist(pl);
         if (pl.length > 0) setCurrentTrack(pl[0]);
         if (!orderData && pl.length > 0) {
-          saveRunningOrder(pl);
+          queueRunningOrderSave(pl);
         }
       } else {
         setIsFolderView(true);
@@ -130,129 +166,133 @@ const PlayerPageContainer = () => {
 
   useEffect(() => {
     if (!playlist.length) return;
-    if (trackDataInitRef.current === folderPath) return;
-    trackDataInitRef.current = folderPath;
-
     let isCancelled = false;
 
-    const generateMissingTrackData = async () => {
-      const missingTracks: FileItem[] = [];
+    const missingTracks = playlist.filter(
+      (track) => trackDurations[track.name] === undefined && !pendingDurationFetchRef.current.has(track.name)
+    );
+    if (missingTracks.length === 0) return;
 
-      for (const track of playlist) {
-        const trackDataPath = `${folderPath}/${track.name}.track-data.v2.json`;
-        const audioPath = `${folderPath}/${track.name}`;
-        const res = await fetch(
-          `/api/track-data?path=${encodeURIComponent(trackDataPath)}&audioPath=${encodeURIComponent(audioPath)}&check=1`
-        );
-        if (!res.ok) continue;
-        const data = (await res.json()) as { exists: boolean };
-        if (!data.exists) {
-          missingTracks.push(track);
-        }
+    const trackDataPaths = missingTracks.map((track) => {
+      pendingDurationFetchRef.current.add(track.name);
+      return `${folderPath}/${track.name}.track-data.v2.json`;
+    });
+
+    const runBatch = async () => {
+      if (debugDurations) {
+        console.log('[durations] fetching track-data for', missingTracks.map((track) => track.name));
       }
+      const data = await fetchTrackDataBatch(trackDataPaths);
+      if (isCancelled) return;
 
-      if (missingTracks.length === 0 || isCancelled) return;
-
-      console.log(`Generating track data for ${missingTracks.length} track(s) in ${folderPath}`);
-      setTrackDataTotal(missingTracks.length);
-      setTrackDataCompleted(0);
-      setTrackDataPhase('downloading');
-      setTrackDataPercent(null);
-      setIsGeneratingTrackData(true);
-      let nextDurations: Record<string, number> = {};
-
-      let completedCount = 0;
-      for (const track of missingTracks) {
-        if (isCancelled) break;
-        setGeneratingTrackName(track.name);
-        console.log(`Generating track data (${completedCount + 1}/${missingTracks.length}): ${track.name}`);
-
-        const trackDataPath = `${folderPath}/${track.name}.track-data.v2.json`;
-        const nextTrackData: TrackData = await buildTrackDataFromAudioUrl(
-          `/api/audio?path=${encodeURIComponent(`${folderPath}/${track.name}`)}`,
-          256,
-          (progress) => {
-            if (isCancelled) return;
-            setTrackDataPhase(progress.phase);
-            if (progress.percent !== undefined) {
-              setTrackDataPercent(progress.percent);
-            } else {
-              setTrackDataPercent(null);
+      const updateDurations = (entries: Array<{ track: FileItem; duration: number }>) => {
+        if (entries.length === 0) return;
+        setTrackDurations((prev) => {
+          let next = prev;
+          for (const entry of entries) {
+            if (next[entry.track.name] !== undefined) continue;
+            if (next === prev) {
+              next = { ...prev };
             }
+            next[entry.track.name] = entry.duration;
           }
-        );
-
-        setTrackDataPhase('saving');
-        await fetch(`/api/track-data?path=${encodeURIComponent(trackDataPath)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(nextTrackData),
+          return next;
         });
-
-        setTrackDataPhase('verifying');
-        let verified = false;
-        for (let attempt = 1; attempt <= 8; attempt += 1) {
-          if (isCancelled) break;
-          await new Promise((resolve) => setTimeout(resolve, attempt * 750));
-          const verifyRes = await fetch(`/api/track-data?path=${encodeURIComponent(trackDataPath)}&check=1`);
-          if (!verifyRes.ok) continue;
-          const verifyData = (await verifyRes.json()) as { exists: boolean };
-          if (verifyData.exists) {
-            verified = true;
-            break;
+        setTrackDataStatus((prev) => {
+          let next = prev;
+          for (const entry of entries) {
+            if (prev[entry.track.name] === 'present') continue;
+            if (next === prev) {
+              next = { ...prev };
+            }
+            next[entry.track.name] = 'present';
           }
+          return next;
+        });
+      };
+
+      const resolvedEntries: Array<{ track: FileItem; duration: number }> = [];
+      const stillMissing: FileItem[] = [];
+
+      for (const track of missingTracks) {
+        const path = `${folderPath}/${track.name}.track-data.v2.json`;
+        const entry = data[path];
+        if (entry && typeof entry.duration === 'number') {
+          resolvedEntries.push({ track, duration: entry.duration });
+        } else {
+          stillMissing.push(track);
         }
-
-        if (!verified) {
-          console.warn(`Track data save still pending for ${track.name}`);
-        }
-
-        setTrackDataPercent(null);
-
-        nextDurations = { ...nextDurations, [track.name]: nextTrackData.duration };
-        setTrackDurations((prev) => ({ ...prev, [track.name]: nextTrackData.duration }));
-        completedCount += 1;
-        setTrackDataCompleted(completedCount);
       }
 
-      if (Object.keys(nextDurations).length > 0 && !isCancelled) {
-        const mergedDurations = { ...trackDurations, ...nextDurations };
-        fetch(`/api/running-order?path=${encodedRunningOrderPath}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            playlist: playlist.map((file) => file.name),
-            durations: mergedDurations,
-          }),
-        });
+      if (debugDurations) {
+        const returnedKeys = Object.keys(data || {});
+        console.log('[durations] batch keys', returnedKeys);
+        console.log('[durations] resolved', resolvedEntries.map((entry) => entry.track.name));
+        console.log('[durations] missing after batch', stillMissing.map((track) => track.name));
       }
 
-      if (!isCancelled) {
-        setIsGeneratingTrackData(false);
-        setGeneratingTrackName(null);
-        setTrackDataTotal(0);
-        setTrackDataCompleted(0);
-        setTrackDataPhase(null);
-        setTrackDataPercent(null);
+      updateDurations(resolvedEntries);
+
+      if (stillMissing.length > 0) {
+        const fallbackEntries: Array<{ track: FileItem; duration: number }> = [];
+        const fallbackMissing: FileItem[] = [];
+        for (const track of stillMissing) {
+          if (isCancelled) return;
+          const path = `${folderPath}/${track.name}.track-data.v2.json`;
+          const entry = await fetchTrackData(path);
+          if (entry && typeof entry.duration === 'number') {
+            fallbackEntries.push({ track, duration: entry.duration });
+          } else {
+            fallbackMissing.push(track);
+          }
+        }
+        if (debugDurations) {
+          console.log('[durations] resolved via fallback', fallbackEntries.map((entry) => entry.track.name));
+        }
+        updateDurations(fallbackEntries);
+
+        if (fallbackMissing.length > 0) {
+          setTrackDataStatus((prev) => {
+            let next = prev;
+            for (const track of fallbackMissing) {
+              if (next[track.name] === 'missing') continue;
+              if (next === prev) {
+                next = { ...prev };
+              }
+              next[track.name] = 'missing';
+            }
+            return next;
+          });
+        }
+      }
+
+      for (const track of missingTracks) {
+        pendingDurationFetchRef.current.delete(track.name);
       }
     };
 
-    generateMissingTrackData().catch((error) => {
-      console.error('Failed to generate track data:', error);
-      if (!isCancelled) {
-        setIsGeneratingTrackData(false);
-        setGeneratingTrackName(null);
-        setTrackDataTotal(0);
-        setTrackDataCompleted(0);
-        setTrackDataPhase(null);
-        setTrackDataPercent(null);
-      }
-    });
+    runBatch();
 
     return () => {
       isCancelled = true;
     };
-  }, [folderPath, playlist, runningOrderPath, trackDurations]);
+  }, [folderPath, playlist, trackDurations]);
+
+  useEffect(() => {
+    if (Object.keys(trackDurations).length === 0) return;
+    setTrackDataStatus((prev) => {
+      let next = prev;
+      for (const [name, duration] of Object.entries(trackDurations)) {
+        if (typeof duration !== 'number') continue;
+        if (next[name] === 'present') continue;
+        if (next === prev) {
+          next = { ...prev };
+        }
+        next[name] = 'present';
+      }
+      return next;
+    });
+  }, [trackDurations]);
 
   const onDragEnd: OnDragEndResponder = (result) => {
     if (!result.destination || isGuest) return;
@@ -264,14 +304,7 @@ const PlayerPageContainer = () => {
   };
 
   const saveRunningOrder = (currentPlaylist: FileItem[]) => {
-    fetch(`/api/running-order?path=${encodedRunningOrderPath}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        playlist: currentPlaylist.map((f) => f.name),
-        durations: trackDurations,
-      }),
-    });
+    queueRunningOrderSave(currentPlaylist);
   };
 
   const handlePlayFullSequence = () => {
@@ -396,17 +429,13 @@ const PlayerPageContainer = () => {
         onSelectTrack={setCurrentTrack}
         onReorder={onDragEnd}
         trackDurations={trackDurations}
+        trackDataStatus={trackDataStatus}
       />
       {isGeneratingTrackData && !isTrackDataOverlayDismissed && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-xl px-8 py-6 text-center max-w-sm w-full">
             <div className="w-12 h-12 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-4"></div>
             <div className="text-lg font-black text-slate-900">Generating track data</div>
-            {trackDataTotal > 0 && (
-              <div className="text-sm text-slate-500 mt-2">
-                {trackDataCompleted} of {trackDataTotal} complete
-              </div>
-            )}
             {generatingTrackName && (
               <div className="text-sm text-slate-500 mt-2 truncate">{generatingTrackName}</div>
             )}

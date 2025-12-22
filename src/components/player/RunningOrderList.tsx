@@ -11,6 +11,7 @@ interface RunningOrderListProps {
   currentTrack: FileItem | null;
   isGuest: boolean;
   trackDurations: Record<string, number>;
+  trackDataStatus: Record<string, 'present' | 'missing'>;
   onSelectTrack: (track: FileItem) => void;
   onReorder: OnDragEndResponder;
 }
@@ -20,18 +21,23 @@ const RunningOrderList = ({
   currentTrack,
   isGuest,
   trackDurations,
+  trackDataStatus,
   onSelectTrack,
   onReorder,
 }: RunningOrderListProps) => {
+  const hasAllDurations =
+    playlist.length > 0 && playlist.every((track) => trackDurations[track.name] !== undefined);
+  const totalDuration = playlist.reduce((sum, track) => sum + (trackDurations[track.name] || 0), 0);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
           <span className="w-1.5 h-6 bg-blue-500 rounded-full"></span>Running Order
         </h2>
-        {playlist.length > 0 && playlist.every((f) => trackDurations[f.name] !== undefined) && (
+        {playlist.length > 0 && (
           <span className="text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1 rounded-full uppercase tracking-wider">
-            Total: {formatTime(playlist.reduce((sum, f) => sum + (trackDurations[f.name] || 0), 0))}
+            {hasAllDurations ? `Total: ${formatTime(totalDuration)}` : 'Total: Pending'}
           </span>
         )}
       </div>
@@ -62,6 +68,14 @@ const RunningOrderList = ({
                       >
                         {index + 1}
                       </span>
+                      <span
+                        className={`w-2.5 h-2.5 rounded-full border ${
+                          trackDataStatus[item.name] === 'present'
+                            ? 'bg-green-500 border-green-500'
+                            : 'border-gray-300'
+                        }`}
+                        aria-hidden="true"
+                      />
                       <span className="font-bold text-sm grow truncate">{item.name}</span>
                       {!isGuest && (
                         <svg

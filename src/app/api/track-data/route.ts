@@ -18,7 +18,10 @@ export async function GET(request: Request) {
     try {
       const metadata = await storage.getFileMetadata(path);
       if (!metadata) {
-        return NextResponse.json({ exists: false, needsRegeneration: false });
+        return NextResponse.json(
+          { exists: false, needsRegeneration: false },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
       }
 
       let needsRegeneration = false;
@@ -29,7 +32,10 @@ export async function GET(request: Request) {
         }
       }
 
-      return NextResponse.json({ exists: true, needsRegeneration });
+      return NextResponse.json(
+        { exists: true, needsRegeneration },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
     } catch (error) {
       console.error(`Error checking track data for ${path}:`, error);
       return new Response('Error checking track data', { status: 500 });
@@ -39,7 +45,11 @@ export async function GET(request: Request) {
   try {
     const data = await storage.getFile(path);
     if (data) {
-      return NextResponse.json(data);
+      return NextResponse.json(data, {
+        headers: {
+          'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+        },
+      });
     }
     return new Response('Track data not found', { status: 404 });
   } catch (error) {
