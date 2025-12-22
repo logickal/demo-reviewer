@@ -1,40 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Demo Reviewer
 
-## Getting Started
+A Next.js App Router project for reviewing audio directories with track playback, waveform previews, comments, and running order management. Audio assets and metadata live in Google Cloud Storage (GCS); the app reads track data and comments from JSON files stored alongside the audio.
 
-First, run the development server:
+## Requirements
+- Node.js 20+
+- GCS access (see Environment Variables)
+- ffmpeg + ffprobe for local metadata pre-generation (required for the CLI script)
+
+## Environment Variables
+Set these in `.env.local` for development:
+- `APP_PASSPHRASE`: login passphrase
+- `SHARE_SECRET`: secret used to generate share links
+- `GCS_BUCKET_NAME`: target GCS bucket
+- `GCS_CREDENTIALS_JSON`: service account JSON for GCS access
+- `NEXT_PUBLIC_BASE_URL`: public base URL for share links
+
+## Development
+```bash
+npm install
+npm run dev
+```
+Open `http://localhost:3000`.
+
+Other useful commands:
+- `npm run build`: production build
+- `npm run start`: run production server
+- `npm run lint`: ESLint checks
+- `npm run type-check`: TypeScript type checks
+
+## Local Track Data Pre-Generation
+To avoid server-side bandwidth and ensure running order totals are ready on first load, generate `.track-data.v2.json` files locally before uploading to GCS.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run precompute-track-data -- --input /path/to/local/folder
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Options:
+- `--scale 256` (default 256)
+- `--overwrite` (regenerate existing metadata)
+- `--no-running-order` (skip `running-order.v2.json`)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Outputs:
+- `*.track-data.v2.json` next to each audio file
+- `running-order.v2.json` in each folder with audio
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Notes:
+- Requires `ffmpeg` and `ffprobe` available on your PATH.
 
-## Learn More
+## Project Structure
+- `src/app/`: route segments, layouts, and API routes
+- `src/components/`: UI components and player logic
+- `src/lib/`: storage + auth helpers
+- `scripts/`: local utilities (precompute script lives here)
+- `public/`: static assets
 
-To learn more about Next.js, take a look at the following resources:
+## Deployment Notes
+This app serves audio via GCS signed URLs. Ensure the bucket CORS policy allows the app origin(s) you plan to use.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-
-### Garbage
-We need a proper readme, obviously.
+Example CORS config (allow local dev + production):
+```json
+[
+  {
+    "origin": ["http://localhost:3000", "https://funkconsultant.offnominal.com"],
+    "method": ["GET", "HEAD", "OPTIONS"],
+    "responseHeader": ["Content-Type", "Content-Length", "Accept-Ranges"],
+    "maxAgeSeconds": 3600
+  }
+]
+```
