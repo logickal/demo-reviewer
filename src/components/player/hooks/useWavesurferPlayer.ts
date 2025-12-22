@@ -54,7 +54,9 @@ export const useWavesurferPlayer = ({
     height: 100,
     waveColor: 'rgb(200, 200, 200)',
     progressColor: 'rgb(255, 85, 0)',
-    url: currentTrack ? `/api/audio?path=${folderPath}/${currentTrack.name}` : undefined,
+    url: currentTrack
+      ? `/api/audio?path=${encodeURIComponent(`${folderPath}/${currentTrack.name}`)}`
+      : undefined,
     peaks: peaks ? [peaks] : undefined,
     duration: peaks ? duration : undefined,
   });
@@ -75,7 +77,7 @@ export const useWavesurferPlayer = ({
       setTrackDurations((prev) => {
         const next = { ...prev, [currentTrack.name]: nextDuration };
 
-        fetch(`/api/running-order?path=${runningOrderPath}`, {
+        fetch(`/api/running-order?path=${encodeURIComponent(runningOrderPath)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -91,14 +93,18 @@ export const useWavesurferPlayer = ({
     const loadTrackData = async () => {
       const trackDataPath = `${folderPath}/${currentTrack.name}.track-data.v2.json`;
       const audioPath = `${folderPath}/${currentTrack.name}`;
+      const encodedTrackDataPath = encodeURIComponent(trackDataPath);
+      const encodedAudioPath = encodeURIComponent(audioPath);
 
       try {
-        const checkRes = await fetch(`/api/track-data?path=${trackDataPath}&audioPath=${audioPath}&check=1`);
+        const checkRes = await fetch(
+          `/api/track-data?path=${encodedTrackDataPath}&audioPath=${encodedAudioPath}&check=1`
+        );
         if (!checkRes.ok) return;
         const checkData = (await checkRes.json()) as { exists: boolean; needsRegeneration: boolean };
 
         if (checkData.exists && !checkData.needsRegeneration) {
-          const dataRes = await fetch(`/api/track-data?path=${trackDataPath}`);
+          const dataRes = await fetch(`/api/track-data?path=${encodedTrackDataPath}`);
           if (!dataRes.ok) return;
           const trackData = (await dataRes.json()) as { peaks: number[]; duration: number };
           if (isCancelled) return;
@@ -117,11 +123,11 @@ export const useWavesurferPlayer = ({
         setIsGeneratingTrackData(true);
         setGeneratingTrackName(currentTrack.name);
 
-        const nextTrackData = await buildTrackDataFromAudioUrl(`/api/audio?path=${audioPath}`, 256, (progress) => {
+        const nextTrackData = await buildTrackDataFromAudioUrl(`/api/audio?path=${encodedAudioPath}`, 256, (progress) => {
           console.log(`Track data ${progress.phase} for ${currentTrack.name}`);
         });
 
-        await fetch(`/api/track-data?path=${trackDataPath}`, {
+        await fetch(`/api/track-data?path=${encodedTrackDataPath}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(nextTrackData),
@@ -179,7 +185,7 @@ export const useWavesurferPlayer = ({
         setTrackDurations((prev) => {
           const next = { ...prev, [currentTrackRef.current!.name]: nextDuration };
 
-          fetch(`/api/running-order?path=${runningOrderPath}`, {
+          fetch(`/api/running-order?path=${encodeURIComponent(runningOrderPath)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

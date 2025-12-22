@@ -41,11 +41,15 @@ const PlayerPageContainer = () => {
   const [trackDataCompleted, setTrackDataCompleted] = useState(0);
   const [trackDataPhase, setTrackDataPhase] = useState<TrackDataProgress['phase'] | null>(null);
   const [trackDataPercent, setTrackDataPercent] = useState<number | null>(null);
+  const [isTrackDataOverlayDismissed, setIsTrackDataOverlayDismissed] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const trackDataInitRef = useRef<string | null>(null);
 
   const commentsPath = currentTrack ? `${folderPath}/${currentTrack.name}.comments.json` : null;
+  const encodedFolderPath = encodeURIComponent(folderPath);
+  const encodedRunningOrderPath = encodeURIComponent(runningOrderPath);
+  const encodedLegacyRunningOrderPath = encodeURIComponent(legacyRunningOrderPath);
   const {
     comments,
     addComment,
@@ -61,6 +65,12 @@ const PlayerPageContainer = () => {
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  useEffect(() => {
+    if (isGeneratingTrackData) {
+      setIsTrackDataOverlayDismissed(false);
+    }
+  }, [isGeneratingTrackData]);
 
   const { wavesurfer, isPlaying, currentTime, duration, onPlayPause } = useWavesurferPlayer({
     containerRef,
@@ -79,8 +89,8 @@ const PlayerPageContainer = () => {
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/files?path=${folderPath}`).then((res) => res.json()) as Promise<{ files: FileItem[] }>,
-      fetch(`/api/running-order?path=${runningOrderPath}&legacyPath=${legacyRunningOrderPath}`).then((res) =>
+      fetch(`/api/files?path=${encodedFolderPath}`).then((res) => res.json()) as Promise<{ files: FileItem[] }>,
+      fetch(`/api/running-order?path=${encodedRunningOrderPath}&legacyPath=${encodedLegacyRunningOrderPath}`).then((res) =>
         res.ok ? res.json() : null
       ) as Promise<{ playlist: string[]; durations?: Record<string, number> } | null>,
     ]).then(([filesData, orderData]) => {
@@ -131,7 +141,9 @@ const PlayerPageContainer = () => {
       for (const track of playlist) {
         const trackDataPath = `${folderPath}/${track.name}.track-data.v2.json`;
         const audioPath = `${folderPath}/${track.name}`;
-        const res = await fetch(`/api/track-data?path=${trackDataPath}&audioPath=${audioPath}&check=1`);
+        const res = await fetch(
+          `/api/track-data?path=${encodeURIComponent(trackDataPath)}&audioPath=${encodeURIComponent(audioPath)}&check=1`
+        );
         if (!res.ok) continue;
         const data = (await res.json()) as { exists: boolean };
         if (!data.exists) {
@@ -157,7 +169,7 @@ const PlayerPageContainer = () => {
 
         const trackDataPath = `${folderPath}/${track.name}.track-data.v2.json`;
         const nextTrackData: TrackData = await buildTrackDataFromAudioUrl(
-          `/api/audio?path=${folderPath}/${track.name}`,
+          `/api/audio?path=${encodeURIComponent(`${folderPath}/${track.name}`)}`,
           256,
           (progress) => {
             if (isCancelled) return;
@@ -171,7 +183,7 @@ const PlayerPageContainer = () => {
         );
 
         setTrackDataPhase('saving');
-        await fetch(`/api/track-data?path=${trackDataPath}`, {
+        await fetch(`/api/track-data?path=${encodeURIComponent(trackDataPath)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(nextTrackData),
@@ -182,9 +194,7 @@ const PlayerPageContainer = () => {
         for (let attempt = 1; attempt <= 8; attempt += 1) {
           if (isCancelled) break;
           await new Promise((resolve) => setTimeout(resolve, attempt * 750));
-          const verifyRes = await fetch(
-            `/api/track-data?path=${trackDataPath}&check=1`
-          );
+          const verifyRes = await fetch(`/api/track-data?path=${encodeURIComponent(trackDataPath)}&check=1`);
           if (!verifyRes.ok) continue;
           const verifyData = (await verifyRes.json()) as { exists: boolean };
           if (verifyData.exists) {
@@ -207,7 +217,7 @@ const PlayerPageContainer = () => {
 
       if (Object.keys(nextDurations).length > 0 && !isCancelled) {
         const mergedDurations = { ...trackDurations, ...nextDurations };
-        fetch(`/api/running-order?path=${runningOrderPath}`, {
+        fetch(`/api/running-order?path=${encodedRunningOrderPath}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -254,7 +264,7 @@ const PlayerPageContainer = () => {
   };
 
   const saveRunningOrder = (currentPlaylist: FileItem[]) => {
-    fetch(`/api/running-order?path=${runningOrderPath}`, {
+    fetch(`/api/running-order?path=${encodedRunningOrderPath}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -387,7 +397,7 @@ const PlayerPageContainer = () => {
         onReorder={onDragEnd}
         trackDurations={trackDurations}
       />
-      {isGeneratingTrackData && (
+      {isGeneratingTrackData && !isTrackDataOverlayDismissed && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-xl px-8 py-6 text-center max-w-sm w-full">
             <div className="w-12 h-12 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-4"></div>
@@ -411,6 +421,13 @@ const PlayerPageContainer = () => {
               </div>
             )}
             <div className="text-xs text-slate-400 mt-4">This can take a moment the first time.</div>
+            <button
+              type="button"
+              onClick={() => setIsTrackDataOverlayDismissed(true)}
+              className="mt-4 text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors"
+            >
+              Continue in background
+            </button>
           </div>
         </div>
       )}
