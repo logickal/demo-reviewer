@@ -177,97 +177,102 @@ const PlayerPageContainer = () => {
       pendingDurationFetchRef.current.add(track.name);
       return `${folderPath}/${track.name}.track-data.v2.json`;
     });
+    const clearPending = () => {
+      for (const track of missingTracks) {
+        pendingDurationFetchRef.current.delete(track.name);
+      }
+    };
 
     const runBatch = async () => {
-      if (debugDurations) {
-        console.log('[durations] fetching track-data for', missingTracks.map((track) => track.name));
-      }
-      const data = await fetchTrackDataBatch(trackDataPaths);
-      if (isCancelled) return;
-
-      const updateDurations = (entries: Array<{ track: FileItem; duration: number }>) => {
-        if (entries.length === 0) return;
-        setTrackDurations((prev) => {
-          let next = prev;
-          for (const entry of entries) {
-            if (next[entry.track.name] !== undefined) continue;
-            if (next === prev) {
-              next = { ...prev };
-            }
-            next[entry.track.name] = entry.duration;
-          }
-          return next;
-        });
-        setTrackDataStatus((prev) => {
-          let next = prev;
-          for (const entry of entries) {
-            if (prev[entry.track.name] === 'present') continue;
-            if (next === prev) {
-              next = { ...prev };
-            }
-            next[entry.track.name] = 'present';
-          }
-          return next;
-        });
-      };
-
-      const resolvedEntries: Array<{ track: FileItem; duration: number }> = [];
-      const stillMissing: FileItem[] = [];
-
-      for (const track of missingTracks) {
-        const path = `${folderPath}/${track.name}.track-data.v2.json`;
-        const entry = data[path];
-        if (entry && typeof entry.duration === 'number') {
-          resolvedEntries.push({ track, duration: entry.duration });
-        } else {
-          stillMissing.push(track);
-        }
-      }
-
-      if (debugDurations) {
-        const returnedKeys = Object.keys(data || {});
-        console.log('[durations] batch keys', returnedKeys);
-        console.log('[durations] resolved', resolvedEntries.map((entry) => entry.track.name));
-        console.log('[durations] missing after batch', stillMissing.map((track) => track.name));
-      }
-
-      updateDurations(resolvedEntries);
-
-      if (stillMissing.length > 0) {
-        const fallbackEntries: Array<{ track: FileItem; duration: number }> = [];
-        const fallbackMissing: FileItem[] = [];
-        for (const track of stillMissing) {
-          if (isCancelled) return;
-          const path = `${folderPath}/${track.name}.track-data.v2.json`;
-          const entry = await fetchTrackData(path);
-          if (entry && typeof entry.duration === 'number') {
-            fallbackEntries.push({ track, duration: entry.duration });
-          } else {
-            fallbackMissing.push(track);
-          }
-        }
+      try {
         if (debugDurations) {
-          console.log('[durations] resolved via fallback', fallbackEntries.map((entry) => entry.track.name));
+          console.log('[durations] fetching track-data for', missingTracks.map((track) => track.name));
         }
-        updateDurations(fallbackEntries);
+        const data = await fetchTrackDataBatch(trackDataPaths);
+        if (isCancelled) return;
 
-        if (fallbackMissing.length > 0) {
-          setTrackDataStatus((prev) => {
+        const updateDurations = (entries: Array<{ track: FileItem; duration: number }>) => {
+          if (entries.length === 0) return;
+          setTrackDurations((prev) => {
             let next = prev;
-            for (const track of fallbackMissing) {
-              if (next[track.name] === 'missing') continue;
+            for (const entry of entries) {
+              if (next[entry.track.name] !== undefined) continue;
               if (next === prev) {
                 next = { ...prev };
               }
-              next[track.name] = 'missing';
+              next[entry.track.name] = entry.duration;
             }
             return next;
           });
-        }
-      }
+          setTrackDataStatus((prev) => {
+            let next = prev;
+            for (const entry of entries) {
+              if (prev[entry.track.name] === 'present') continue;
+              if (next === prev) {
+                next = { ...prev };
+              }
+              next[entry.track.name] = 'present';
+            }
+            return next;
+          });
+        };
 
-      for (const track of missingTracks) {
-        pendingDurationFetchRef.current.delete(track.name);
+        const resolvedEntries: Array<{ track: FileItem; duration: number }> = [];
+        const stillMissing: FileItem[] = [];
+
+        for (const track of missingTracks) {
+          const path = `${folderPath}/${track.name}.track-data.v2.json`;
+          const entry = data[path];
+          if (entry && typeof entry.duration === 'number') {
+            resolvedEntries.push({ track, duration: entry.duration });
+          } else {
+            stillMissing.push(track);
+          }
+        }
+
+        if (debugDurations) {
+          const returnedKeys = Object.keys(data || {});
+          console.log('[durations] batch keys', returnedKeys);
+          console.log('[durations] resolved', resolvedEntries.map((entry) => entry.track.name));
+          console.log('[durations] missing after batch', stillMissing.map((track) => track.name));
+        }
+
+        updateDurations(resolvedEntries);
+
+        if (stillMissing.length > 0) {
+          const fallbackEntries: Array<{ track: FileItem; duration: number }> = [];
+          const fallbackMissing: FileItem[] = [];
+          for (const track of stillMissing) {
+            if (isCancelled) return;
+            const path = `${folderPath}/${track.name}.track-data.v2.json`;
+            const entry = await fetchTrackData(path);
+            if (entry && typeof entry.duration === 'number') {
+              fallbackEntries.push({ track, duration: entry.duration });
+            } else {
+              fallbackMissing.push(track);
+            }
+          }
+          if (debugDurations) {
+            console.log('[durations] resolved via fallback', fallbackEntries.map((entry) => entry.track.name));
+          }
+          updateDurations(fallbackEntries);
+
+          if (fallbackMissing.length > 0) {
+            setTrackDataStatus((prev) => {
+              let next = prev;
+              for (const track of fallbackMissing) {
+                if (next[track.name] === 'missing') continue;
+                if (next === prev) {
+                  next = { ...prev };
+                }
+                next[track.name] = 'missing';
+              }
+              return next;
+            });
+          }
+        }
+      } finally {
+        clearPending();
       }
     };
 
@@ -275,6 +280,7 @@ const PlayerPageContainer = () => {
 
     return () => {
       isCancelled = true;
+      clearPending();
     };
   }, [folderPath, playlist, trackDurations]);
 
