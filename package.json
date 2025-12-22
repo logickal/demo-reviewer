@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "precompute-track-data": "node scripts/precompute-track-data.mjs"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.18.0",
