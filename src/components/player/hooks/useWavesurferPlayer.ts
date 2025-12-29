@@ -71,6 +71,7 @@ export const useWavesurferPlayer = ({
     url: signedAudioUrl,
     peaks: peaksForWavesurfer,
     duration: peaks ? duration : undefined,
+    autoplay: isAutoplay,
   });
 
   useEffect(() => {
@@ -236,21 +237,25 @@ export const useWavesurferPlayer = ({
 
     const onReady = () => {
       const nextDuration = wavesurfer.getDuration();
-      if (!Number.isFinite(nextDuration)) return;
-      setDuration((prev) => (prev === nextDuration ? prev : nextDuration));
+      if (Number.isFinite(nextDuration)) {
+        setDuration((prev) => (prev === nextDuration ? prev : nextDuration));
 
-      if (currentTrackRef.current && !trackDurationsRef.current[currentTrackRef.current.name]) {
-        setTrackDurations((prev) => {
-          const next = { ...prev, [currentTrackRef.current!.name]: nextDuration };
-          queueRunningOrderSave?.(playlistRef.current);
+        if (currentTrackRef.current && !trackDurationsRef.current[currentTrackRef.current.name]) {
+          setTrackDurations((prev) => {
+            const next = { ...prev, [currentTrackRef.current!.name]: nextDuration };
+            queueRunningOrderSave?.(playlistRef.current);
 
-          return next;
-        });
+            return next;
+          });
+        }
       }
 
       if (autoplayRef.current) {
         wavesurfer.setVolume(0);
-        wavesurfer.play();
+        wavesurfer.play().catch((err) => {
+          console.error('Autoplay failed:', err);
+        });
+
         const fadeDuration = 0.05;
         const startTime = Date.now();
 
