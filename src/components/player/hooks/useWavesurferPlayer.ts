@@ -51,11 +51,17 @@ export const useWavesurferPlayer = ({
   const playlistRef = useRef(playlist);
   const currentTrackRef = useRef(currentTrack);
   const trackDurationsRef = useRef(trackDurations);
+  const signedAudioUrlRef = useRef(signedAudioUrl);
+  const durationRef = useRef(duration);
+  const peaksRef = useRef(peaks);
 
   autoplayRef.current = isAutoplay;
   playlistRef.current = playlist;
   currentTrackRef.current = currentTrack;
   trackDurationsRef.current = trackDurations;
+  signedAudioUrlRef.current = signedAudioUrl;
+  durationRef.current = duration;
+  peaksRef.current = peaks;
 
   const peaksForWavesurfer = useMemo(() => (peaks ? [peaks] : undefined), [peaks]);
   const audioPath = useMemo(() => {
@@ -79,6 +85,10 @@ export const useWavesurferPlayer = ({
       setDuration(0);
       setPeaks(undefined);
       setSignedAudioUrl(undefined);
+    } else {
+      // Clear current data when switching tracks to prevent "leaking" previous track visuals
+      setDuration(0);
+      setPeaks(undefined);
     }
   }, [currentTrack]);
 
@@ -111,28 +121,26 @@ export const useWavesurferPlayer = ({
     };
   }, [audioPath]);
 
-  useEffect(() => {
-    if (!currentTrack) return;
-    let isCancelled = false;
-
-    const updateTrackDurations = (nextDuration: number) => {
-      if (trackDurationsRef.current[currentTrack.name]) return;
+  const updateTrackDurations = useCallback(
+    (nextDuration: number, trackName: string) => {
+      if (trackDurationsRef.current[trackName]) return;
       setTrackDurations((prev) => {
-        const next = { ...prev, [currentTrack.name]: nextDuration };
+        const next = { ...prev, [trackName]: nextDuration };
         queueRunningOrderSave?.(playlistRef.current);
-
         return next;
       });
-    };
+    },
+    [queueRunningOrderSave, setTrackDurations]
+  );
 
-    const loadTrackData = async () => {
-      const trackDataPath = `${folderPath}/${currentTrack.name}.track-data.v2.json`;
-      const audioPathForCheck = `${folderPath}/${currentTrack.name}`;
+  const loadTrackData = useCallback(
+    async (trackToLoad: FileItem, isCancelledRef: { current: boolean }, forceRegenerate = false) => {
+      const trackDataPath = `${folderPath}/${trackToLoad.name}.track-data.v2.json`;
+      const audioPathForCheck = `${folderPath}/${trackToLoad.name}`;
       const encodedTrackDataPath = encodeURIComponent(trackDataPath);
       const encodedAudioPath = encodeURIComponent(audioPathForCheck);
 
       const getSignedAudioUrl = async () => {
-        if (signedAudioUrl) return signedAudioUrl;
         const res = await fetch(`/api/audio-url?path=${encodedAudioPath}`);
         if (!res.ok) {
           throw new Error('Failed to load signed audio URL');
@@ -145,28 +153,34 @@ export const useWavesurferPlayer = ({
       };
 
       try {
-        const checkRes = await fetch(
-          `/api/track-data?path=${encodedTrackDataPath}&audioPath=${encodedAudioPath}&check=1`
-        );
-        if (!checkRes.ok) return;
-        const checkData = (await checkRes.json()) as { exists: boolean; needsRegeneration: boolean };
+        if (!forceRegenerate) {
+          const checkRes = await fetch(
+            `/api/track-data?path=${encodedTrackDataPath}&audioPath=${encodedAudioPath}&check=1`
+          );
+          if (!checkRes.ok) return;
+          const checkData = (await checkRes.json()) as { exists: boolean; needsRegeneration: boolean };
 
-        if (checkData.exists && !checkData.needsRegeneration) {
-          const trackData = await fetchTrackData(trackDataPath);
-          if (!trackData) return;
-          if (isCancelled) return;
-          setPeaks(trackData.peaks);
-          setDuration(trackData.duration);
-          updateTrackDurations(trackData.duration);
-          return;
+          if (checkData.exists && !checkData.needsRegeneration) {
+            const trackData = await fetchTrackData(trackDataPath);
+            if (!trackData) return;
+            if (isCancelledRef.current) return;
+            if (currentTrackRef.current?.name === trackToLoad.name) {
+              setPeaks(trackData.peaks);
+              setDuration(trackData.duration);
+            }
+            updateTrackDurations(trackData.duration, trackToLoad.name);
+            return;
+          }
+        } else {
+          // If forcing, bypass cache completely
+          await fetchTrackData(trackDataPath, true);
         }
 
         // If track data is missing or stale, generate it on demand.
-
-        if (isCancelled) return;
-        console.log(`Regenerating track data for ${currentTrack.name}`);
+        if (isCancelledRef.current) return;
+        console.log(`Regenerating track data for ${trackToLoad.name}`);
         setIsGeneratingTrackData(true);
-        setGeneratingTrackName(currentTrack.name);
+        setGeneratingTrackName(trackToLoad.name);
         setTrackDataPhase?.('downloading');
         setTrackDataPercent?.(null);
 
@@ -186,41 +200,45 @@ export const useWavesurferPlayer = ({
           body: JSON.stringify(nextTrackData),
         });
 
-        if (isCancelled) return;
-        setPeaks(nextTrackData.peaks);
-        setDuration(nextTrackData.duration);
-        updateTrackDurations(nextTrackData.duration);
-        console.log(`Regenerated track data for ${currentTrack.name}`);
+        if (isCancelledRef.current) return;
+        if (currentTrackRef.current?.name === trackToLoad.name) {
+          setPeaks(nextTrackData.peaks);
+          setDuration(nextTrackData.duration);
+        }
+        updateTrackDurations(nextTrackData.duration, trackToLoad.name);
+        console.log(`Regenerated track data for ${trackToLoad.name}`);
       } catch (error) {
         console.error('Failed to load track data:', error);
       } finally {
-        if (!isCancelled) {
+        if (!isCancelledRef.current) {
           setIsGeneratingTrackData(false);
           setGeneratingTrackName(null);
           setTrackDataPhase?.(null);
           setTrackDataPercent?.(null);
         }
       }
-    };
+    },
+    [
+      folderPath,
+      setGeneratingTrackName,
+      setIsGeneratingTrackData,
+      setTrackDataPercent,
+      setTrackDataPhase,
+      updateTrackDurations,
+    ]
+  );
 
-    loadTrackData();
+  useEffect(() => {
+    if (!currentTrack) return;
+    const isCancelledRef = { current: false };
+    loadTrackData(currentTrack, isCancelledRef);
 
     return () => {
-      isCancelled = true;
+      isCancelledRef.current = true;
       setIsGeneratingTrackData(false);
       setGeneratingTrackName(null);
     };
-  }, [
-    currentTrack,
-    folderPath,
-    runningOrderPath,
-    queueRunningOrderSave,
-    setGeneratingTrackName,
-    setIsGeneratingTrackData,
-    setTrackDataPercent,
-    setTrackDataPhase,
-    setTrackDurations,
-  ]);
+  }, [currentTrack, loadTrackData, setIsGeneratingTrackData, setGeneratingTrackName]);
 
   useEffect(() => {
     if (!wavesurfer) return;
@@ -236,9 +254,34 @@ export const useWavesurferPlayer = ({
     };
 
     const onReady = () => {
+      // Guard: Ensure the loaded audio matches the latest track intended by state
+      // We use the ref here to avoid stale closures in the ready handler.
+      if (wavesurfer.options.url !== signedAudioUrlRef.current) {
+        console.warn('Wavesurfer ready for old/mismatched URL, ignoring state update', {
+          wavesurferUrl: wavesurfer.options.url,
+          currentUrl: signedAudioUrlRef.current
+        });
+        return;
+      }
+
       const nextDuration = wavesurfer.getDuration();
       if (Number.isFinite(nextDuration)) {
-        setDuration((prev) => (prev === nextDuration ? prev : nextDuration));
+        // Sanity Check: If the engine duration differs significantly (>2s) from metadata,
+        // it's likely the metadata is corrupted (due to a previous race condition).
+        // Trigger a regeneration.
+        const currentMetadataDuration = durationRef.current;
+        if (currentMetadataDuration > 0 && Math.abs(currentMetadataDuration - nextDuration) > 2) {
+          console.warn(`Duration mismatch detected (Metadata: ${currentMetadataDuration}, Engine: ${nextDuration}). Triggering repair...`);
+          if (currentTrackRef.current) {
+            loadTrackData(currentTrackRef.current, { current: false }, true);
+          }
+        }
+
+        // Only update duration if we don't already have it from metadata (which is more accurate)
+        setDuration((prev) => {
+          if (prev > 0) return prev;
+          return nextDuration;
+        });
 
         if (currentTrackRef.current && !trackDurationsRef.current[currentTrackRef.current.name]) {
           setTrackDurations((prev) => {

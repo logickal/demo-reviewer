@@ -6,13 +6,15 @@ type TrackDataResponse = TrackData | null;
 
 const trackDataCache = new Map<string, TrackData>();
 
-export const fetchTrackData = async (path: string): Promise<TrackDataResponse> => {
-  const cached = trackDataCache.get(path);
-  if (cached) {
-    return cached;
+export const fetchTrackData = async (path: string, force = false): Promise<TrackDataResponse> => {
+  if (!force) {
+    const cached = trackDataCache.get(path);
+    if (cached) {
+      return cached;
+    }
   }
 
-  const res = await fetch(`/api/track-data?path=${encodeURIComponent(path)}`);
+  const res = await fetch(`/api/track-data?path=${encodeURIComponent(path)}${force ? '&force=1' : ''}`);
   if (!res.ok) {
     return null;
   }

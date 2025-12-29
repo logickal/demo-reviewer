@@ -7,6 +7,7 @@ export async function GET(request: Request) {
   const rawPath = searchParams.get('path');
   const rawAudioPath = searchParams.get('audioPath');
   const isCheck = searchParams.get('check') === '1';
+  const force = searchParams.get('force') === '1';
 
   if (!rawPath) {
     return new Response('Path is required', { status: 400 });
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
 
   const path = `${ROOT_DIR}${rawPath}`;
 
-  if (isCheck) {
+  if (isCheck && !force) {
     try {
       const metadata = await storage.getFileMetadata(path);
       if (!metadata) {
