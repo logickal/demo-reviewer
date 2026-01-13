@@ -5,8 +5,9 @@ export interface FileItem {
 
 export interface Comment {
   id: string;
-  timestamp: number;
+  timestamp?: number;
   text: string;
   initials: string;
   parentId?: string;
+  createdAt?: string;
 }

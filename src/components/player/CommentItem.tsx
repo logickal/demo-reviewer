@@ -14,8 +14,8 @@ interface CommentItemProps {
   replyText: string;
   setReplyText: (val: string) => void;
   handleAddComment: (parentId: string) => void;
-  hoveredCommentTimestamp: number | null;
-  setHoveredCommentTimestamp: (timestamp: number | null) => void;
+  hoveredCommentTimestamp?: number | null;
+  setHoveredCommentTimestamp?: (timestamp: number | null) => void;
   showReplyButton: boolean;
   onDelete: (id: string) => void;
   confirmDeleteId: string | null;
@@ -46,28 +46,33 @@ const CommentItem = ({
   return (
     <div className={`space-y-3 ${depth > 0 ? 'ml-12' : ''}`}>
       <div
-        className={`group p-4 rounded-2xl border transition-all flex gap-4 items-start ${
-          hoveredCommentTimestamp === comment.timestamp
+        className={`group p-4 rounded-2xl border transition-all flex gap-4 items-start ${comment.timestamp !== undefined && hoveredCommentTimestamp === comment.timestamp
             ? 'bg-orange-50 border-orange-200 shadow-md'
             : depth > 0
               ? 'bg-gray-50/50 border-gray-100'
               : 'bg-white border-gray-100 hover:border-gray-200'
-        }`}
-        onMouseEnter={() => setHoveredCommentTimestamp(comment.timestamp)}
-        onMouseLeave={() => setHoveredCommentTimestamp(null)}
+          }`}
+        onMouseEnter={() => comment.timestamp !== undefined && setHoveredCommentTimestamp?.(comment.timestamp)}
+        onMouseLeave={() => comment.timestamp !== undefined && setHoveredCommentTimestamp?.(null)}
       >
         <div
-          className={`shrink-0 ${
-            depth > 0 ? 'w-8 h-8 rounded-lg' : 'w-10 h-10 rounded-xl'
-          } bg-gray-100 text-gray-500 flex items-center justify-center text-xs font-black group-hover:bg-orange-500 group-hover:text-white transition-colors`}
+          className={`shrink-0 ${depth > 0 ? 'w-8 h-8 rounded-lg' : 'w-10 h-10 rounded-xl'
+            } bg-gray-100 text-gray-500 flex items-center justify-center text-xs font-black group-hover:bg-orange-500 group-hover:text-white transition-colors`}
         >
           {comment.initials.substring(0, 2).toUpperCase()}
         </div>
         <div className="grow">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-orange-500 font-mono text-xs font-bold bg-orange-50 px-2 py-0.5 rounded-full">
-              {formatTime(comment.timestamp)}
-            </span>
+            {comment.timestamp !== undefined && (
+              <span className="text-orange-500 font-mono text-xs font-bold bg-orange-50 px-2 py-0.5 rounded-full">
+                {formatTime(comment.timestamp)}
+              </span>
+            )}
+            {comment.timestamp === undefined && comment.createdAt && (
+              <span className="text-gray-400 font-mono text-[10px] uppercase font-bold">
+                {new Date(comment.createdAt).toLocaleDateString()} {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
             <div className="flex items-center gap-3">
               {showReplyButton && !isConfirmingDelete && (
                 <button
@@ -162,7 +167,11 @@ const CommentItem = ({
 
       {comments
         .filter((reply) => reply.parentId === comment.id)
-        .sort((a, b) => a.timestamp - b.timestamp)
+        .sort((a, b) => {
+          if (a.timestamp !== undefined && b.timestamp !== undefined) return a.timestamp - b.timestamp;
+          if (a.createdAt && b.createdAt) return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          return 0;
+        })
         .map((reply) => (
           <CommentItem
             key={reply.id}

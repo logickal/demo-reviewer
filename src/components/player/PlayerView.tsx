@@ -7,6 +7,7 @@ import Link from 'next/link';
 import CommentsPanel from './CommentsPanel';
 import RunningOrderList from './RunningOrderList';
 import WaveformWithMarkers from './WaveformWithMarkers';
+import GeneralComments from './GeneralComments';
 import type { Comment, FileItem } from './types';
 import { formatTime } from './utils';
 
@@ -48,6 +49,13 @@ interface PlayerViewProps {
   onReorder: OnDragEndResponder;
   trackDurations: Record<string, number>;
   trackDataStatus: Record<string, 'present' | 'missing'>;
+  generalComments: Comment[];
+  addGeneralComment: (input: { text: string; initials: string; timestamp?: number | null; parentId?: string }) => boolean;
+  deleteGeneralComment: (id: string) => void;
+  replyingToGeneralCommentId: string | null;
+  setReplyingToGeneralCommentId: (id: string | null) => void;
+  confirmGeneralDeleteId: string | null;
+  setConfirmGeneralDeleteId: (id: string | null) => void;
 }
 
 const PlayerView = ({
@@ -88,6 +96,13 @@ const PlayerView = ({
   onReorder,
   trackDurations,
   trackDataStatus,
+  generalComments,
+  addGeneralComment,
+  deleteGeneralComment,
+  replyingToGeneralCommentId,
+  setReplyingToGeneralCommentId,
+  confirmGeneralDeleteId,
+  setConfirmGeneralDeleteId,
 }: PlayerViewProps) => {
   const parentFolderPath = folderPath
     .split('/')
@@ -118,7 +133,7 @@ const PlayerView = ({
             {!isGuest && (
               <Link
                 href={backHref}
-                className="text-blue-500 mb-4 block hover:underline flex items-center gap-1"
+                className="text-blue-500 mb-4 hover:underline flex items-center gap-1"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -135,11 +150,10 @@ const PlayerView = ({
             <button
               onClick={onShare}
               disabled={isShareLoading}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all font-medium ${
-                shareSuccess
-                  ? 'bg-green-50 border-green-200 text-green-600'
-                  : 'bg-white border-gray-200 text-gray-700 hover:border-orange-200 hover:bg-orange-50'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all font-medium ${shareSuccess
+                ? 'bg-green-50 border-green-200 text-green-600'
+                : 'bg-white border-gray-200 text-gray-700 hover:border-orange-200 hover:bg-orange-50'
+                }`}
             >
               {isShareLoading ? (
                 <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
@@ -161,9 +175,8 @@ const PlayerView = ({
               </span>
             </div>
             <div
-              className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
-                isAutoplay ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'
-              }`}
+              className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${isAutoplay ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'
+                }`}
             >
               Autoplay {isAutoplay ? 'ON' : 'OFF'}
             </div>
@@ -245,11 +258,10 @@ const PlayerView = ({
             </div>
             <button
               onClick={onPlayFullSequence}
-              className={`px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${
-                isAutoplay
-                  ? 'bg-green-500 border-green-500 text-white shadow-lg shadow-green-100'
-                  : 'bg-white border-gray-200 text-gray-400 hover:border-orange-200 hover:text-orange-500'
-              }`}
+              className={`px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${isAutoplay
+                ? 'bg-green-500 border-green-500 text-white shadow-lg shadow-green-100'
+                : 'bg-white border-gray-200 text-gray-400 hover:border-orange-200 hover:text-orange-500'
+                }`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
@@ -283,6 +295,17 @@ const PlayerView = ({
             onReorder={onReorder}
           />
         </div>
+
+        <GeneralComments
+          comments={generalComments}
+          isGuest={isGuest}
+          replyingToCommentId={replyingToGeneralCommentId}
+          setReplyingToCommentId={setReplyingToGeneralCommentId}
+          confirmDeleteId={confirmGeneralDeleteId}
+          setConfirmDeleteId={setConfirmGeneralDeleteId}
+          addComment={addGeneralComment}
+          deleteComment={deleteGeneralComment}
+        />
       </div>
     </main>
   );

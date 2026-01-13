@@ -54,9 +54,11 @@ const PlayerPageContainer = () => {
   }, [folderPath]);
 
   const commentsPath = currentTrack ? `${folderPath}/${currentTrack.name}.comments.json` : null;
+  const generalCommentsPath = `${folderPath}/_general-comments.json`;
   const encodedFolderPath = encodeURIComponent(folderPath);
   const encodedRunningOrderPath = encodeURIComponent(runningOrderPath);
   const encodedLegacyRunningOrderPath = encodeURIComponent(legacyRunningOrderPath);
+
   const {
     comments,
     addComment,
@@ -66,6 +68,16 @@ const PlayerPageContainer = () => {
     confirmDeleteId,
     setConfirmDeleteId,
   } = useComments(commentsPath);
+
+  const {
+    comments: generalComments,
+    addComment: addGeneralComment,
+    deleteComment: deleteGeneralComment,
+    replyingToCommentId: replyingToGeneralCommentId,
+    setReplyingToCommentId: setReplyingToGeneralCommentId,
+    confirmDeleteId: confirmGeneralDeleteId,
+    setConfirmDeleteId: setConfirmGeneralDeleteId,
+  } = useComments(generalCommentsPath);
 
   const isGuest = useMemo(() => Boolean(token), [token]);
 
@@ -436,6 +448,13 @@ const PlayerPageContainer = () => {
         onReorder={onDragEnd}
         trackDurations={trackDurations}
         trackDataStatus={trackDataStatus}
+        generalComments={generalComments}
+        addGeneralComment={addGeneralComment}
+        deleteGeneralComment={deleteGeneralComment}
+        replyingToGeneralCommentId={replyingToGeneralCommentId}
+        setReplyingToGeneralCommentId={setReplyingToGeneralCommentId}
+        confirmGeneralDeleteId={confirmGeneralDeleteId}
+        setConfirmGeneralDeleteId={setConfirmGeneralDeleteId}
       />
       {isGeneratingTrackData && !isTrackDataOverlayDismissed && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm">
