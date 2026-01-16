@@ -41,7 +41,7 @@ interface PlayerViewProps {
   setNewCommentTimestamp: (val: number | null) => void;
   replyingToCommentId: string | null;
   setReplyingToCommentId: (id: string | null) => void;
-  addComment: (input: { text: string; initials: string; timestamp: number | null; parentId?: string }) => boolean;
+  addComment: (input: { text: string; initials: string; timestamp?: number | null; parentId?: string }) => boolean;
   deleteComment: (id: string) => void;
   confirmDeleteId: string | null;
   setConfirmDeleteId: (id: string | null) => void;

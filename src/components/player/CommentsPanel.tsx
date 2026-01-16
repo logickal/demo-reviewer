@@ -12,7 +12,7 @@ interface CommentsPanelProps {
   setReplyingToCommentId: (id: string | null) => void;
   confirmDeleteId: string | null;
   setConfirmDeleteId: (id: string | null) => void;
-  addComment: (input: { text: string; initials: string; timestamp: number; parentId?: string }) => boolean;
+  addComment: (input: { text: string; initials: string; timestamp?: number | null; parentId?: string }) => boolean;
   deleteComment: (id: string) => void;
 }
 
@@ -54,7 +54,7 @@ const CommentsPanel = ({
       <div className="space-y-6">
         {comments
           .filter((comment) => !comment.parentId || !comments.some((parent) => parent.id === comment.parentId))
-          .sort((a, b) => a.timestamp - b.timestamp)
+          .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
           .map((comment) => (
             <CommentItem
               key={comment.id}
