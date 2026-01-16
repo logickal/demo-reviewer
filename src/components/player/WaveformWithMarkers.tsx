@@ -134,41 +134,41 @@ const WaveformWithMarkers = ({
       <div ref={containerRef} className="absolute inset-0 z-10 cursor-pointer opacity-90 hover:opacity-100 transition-opacity" />
       {duration > 0 && (
         <div className="absolute inset-0 z-20 pointer-events-none">
-          {comments.map((comment) => {
-            const leftPercent = (comment.timestamp / duration) * 100;
-            const isHovered = hoveredCommentTimestamp === comment.timestamp;
-            return (
-              <div
-                key={comment.id}
-                className="absolute top-0 bottom-0 flex flex-col items-center justify-end transform -translate-x-1/2"
-                style={{ left: `${leftPercent}%` }}
-              >
+          {comments
+            .filter((comment): comment is Comment & { timestamp: number } => typeof comment.timestamp === 'number')
+            .map((comment) => {
+              const leftPercent = (comment.timestamp / duration) * 100;
+              const isHovered = hoveredCommentTimestamp === comment.timestamp;
+              return (
                 <div
-                  className={`w-0.5 grow mb-0.5 transition-colors duration-200 ${
-                    isHovered ? 'bg-orange-500' : 'bg-orange-300/40'
-                  }`}
-                />
-                <div
-                  className="comment-marker pointer-events-auto group relative"
-                  onMouseEnter={() => handleHoverComment(comment.timestamp)}
-                  onMouseLeave={() => handleHoverComment(null)}
+                  key={comment.id}
+                  className="absolute top-0 bottom-0 flex flex-col items-center justify-end transform -translate-x-1/2"
+                  style={{ left: `${leftPercent}%` }}
                 >
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-white shadow-sm cursor-pointer transition-transform hover:scale-125 ${
-                      isHovered ? 'bg-orange-500 text-white z-50' : 'bg-white text-gray-600 border-gray-100'
-                    }`}
+                    className={`w-0.5 grow mb-0.5 transition-colors duration-200 ${isHovered ? 'bg-orange-500' : 'bg-orange-300/40'
+                      }`}
+                  />
+                  <div
+                    className="comment-marker pointer-events-auto group relative"
+                    onMouseEnter={() => handleHoverComment(comment.timestamp)}
+                    onMouseLeave={() => handleHoverComment(null)}
                   >
-                    {comment.initials.substring(0, 2).toUpperCase()}
-                  </div>
-                  <div className="hidden group-hover:block absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900/95 backdrop-blur-md text-white text-xs p-3 rounded-xl whitespace-nowrap z-50 shadow-2xl">
-                    <div className="font-bold mb-1 text-orange-400">{formatTime(comment.timestamp)}</div>
-                    <div className="max-w-[200px] whitespace-normal leading-relaxed">{comment.text}</div>
-                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-gray-900/95"></div>
+                    <div
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-white shadow-sm cursor-pointer transition-transform hover:scale-125 ${isHovered ? 'bg-orange-500 text-white z-50' : 'bg-white text-gray-600 border-gray-100'
+                        }`}
+                    >
+                      {comment.initials.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div className="hidden group-hover:block absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900/95 backdrop-blur-md text-white text-xs p-3 rounded-xl whitespace-nowrap z-50 shadow-2xl">
+                      <div className="font-bold mb-1 text-orange-400">{formatTime(comment.timestamp)}</div>
+                      <div className="max-w-[200px] whitespace-normal leading-relaxed">{comment.text}</div>
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-gray-900/95"></div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       )}
 
